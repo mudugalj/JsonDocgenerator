@@ -184,3 +184,31 @@ The JSON Doc Generator is a web application that allows users to upload one or m
 3. WHEN documentation is generated, THE Doc_Generator SHALL identify all occurrences of `${variable_name}` syntax within derived dataframe expressions (derivedDfPipelineMappingMP) and document which variables each transformation references
 4. WHEN documentation is generated, THE Doc_Generator SHALL produce a cross-reference table mapping each variable to the list of source dataframes and derived dataframes that use the variable
 5. IF a `${variable_name}` reference in a query or expression does not match any variable defined in variablesMP, THEN THE Doc_Generator SHALL flag the unresolved variable reference as a warning in the documentation
+
+### Requirement 14: Scalable Documentation for Large Pipelines
+
+**User Story:** As a user working with complex pipelines (70+ steps, 80-100 columns per step), I want the documentation to remain readable by showing core logic flow rather than listing every column, so that I can quickly understand the pipeline without information overload.
+
+#### Acceptance Criteria
+
+1. WHEN a pipeline has 10 or more derived dataframes OR any dataframe has 15 or more column mappings, THE Doc_Generator SHALL switch to compressed documentation mode
+2. IN compressed mode, THE Doc_Generator SHALL display a Pipeline Flow summary table showing step number, dataframe name, type, sources, column count, and key logic description for each transformation
+3. IN compressed mode, THE Doc_Generator SHALL only expand full detail for transformations that contain filters, join conditions, or aggregations
+4. IN compressed mode, THE Doc_Generator SHALL summarize source queries by truncating to 80 characters with an ellipsis indicator
+5. IN compressed mode, THE Doc_Generator SHALL still include all sections (Job Overview, Connections, Sources, Lineage, Outputs, Variable Usage, Recommendations)
+
+### Requirement 15: Pipeline Optimization Recommendations
+
+**User Story:** As a user, I want the documentation to suggest how the pipeline logic can be compressed or improved, so that I can identify redundancies and simplify my data transformations.
+
+#### Acceptance Criteria
+
+1. WHEN documentation is generated, THE Doc_Generator SHALL produce an Optimization Recommendations section at the end of each pipeline document
+2. THE Analyzer SHALL detect duplicate join conditions reused across multiple dataframes and report them as consolidation opportunities
+3. THE Analyzer SHALL detect duplicate column mapping patterns across map-type dataframes and report them as merge candidates
+4. THE Analyzer SHALL detect pass-through map dataframes (no filter, only column forwarding, single consumer) and recommend inlining them into the consuming dataframe
+5. THE Analyzer SHALL detect multiple joins between the same source pair and recommend consolidating them into a single join
+6. THE Analyzer SHALL detect chained map dataframes without filters and recommend merging the column selections into a single step
+7. THE Analyzer SHALL detect unused source dataframes (defined but never referenced) and flag them as warnings
+8. THE Analyzer SHALL compute a complexity score for each pipeline based on the number of steps, columns, and join conditions
+9. IF no optimization opportunities are detected, THE Doc_Generator SHALL display a message indicating the pipeline structure is clean

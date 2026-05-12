@@ -134,7 +134,26 @@ def find_unresolved_variables(model: PipelineModel) -> list[str]
 
 Scans all queries and expressions for `${variable_name}` patterns and builds a cross-reference map.
 
-### 8. Web App (`app.py`)
+### 8. Pipeline Analyzer (`analyzer.py`)
+
+```python
+def analyze_pipeline(model: PipelineModel) -> PipelineRecommendations
+def is_large_pipeline(model: PipelineModel) -> bool
+```
+
+Analyzes pipelines for optimization opportunities and determines if compressed documentation mode should be used. Detects:
+- Duplicate join conditions across dataframes
+- Duplicate column mapping patterns (merge candidates)
+- Pass-through maps that can be inlined
+- Multiple joins between same source pairs
+- Chained maps without filters
+- Unused source dataframes
+
+Thresholds for compressed mode:
+- `LARGE_PIPELINE_THRESHOLD = 10` (derived dataframes)
+- `LARGE_COLUMN_THRESHOLD = 15` (columns per dataframe)
+
+### 9. Web App (`app.py`)
 
 Flask application with routes:
 - `POST /upload` — Accept JSON files, validate, parse, generate docs

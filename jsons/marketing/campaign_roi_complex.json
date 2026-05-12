@@ -1,0 +1,494 @@
+{
+  "variablesMP": [
+    {
+      "ID": "MARKETING_CAMPAIGN_ROI_JOB",
+      "Options": [
+        {
+          "key": "campaign_start",
+          "value": "2025-10-01"
+        },
+        {
+          "key": "campaign_end",
+          "value": "2025-12-31"
+        },
+        {
+          "key": "min_spend_threshold",
+          "value": 1000
+        }
+      ]
+    }
+  ],
+  "connectionDetailsMP": [
+    {
+      "ID": 18,
+      "Options": [
+        {
+          "key": "driver",
+          "value": "org.apache.hive.jdbc.HiveDriver"
+        },
+        {
+          "key": "url",
+          "value": "jdbc:hive2://hive-server:10000/default"
+        },
+        {
+          "key": "user",
+          "value": "hive"
+        },
+        {
+          "key": "password",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "ID": 99,
+      "Options": [
+        {
+          "key": "driver",
+          "value": "com.mysql.cj.jdbc.Driver"
+        },
+        {
+          "key": "url",
+          "value": "jdbc:mysql://mysql-db:3306/products_db"
+        },
+        {
+          "key": "user",
+          "value": "mysqluser"
+        },
+        {
+          "key": "password",
+          "value": "mysqlpass"
+        }
+      ]
+    }
+  ],
+  "srcDFsOptionsMP": [
+    {
+      "ID": "700700701.OPTIONS",
+      "Options": [
+        {
+          "key": "query",
+          "value": "SELECT campaign_id, channel, spend_amount, impressions, clicks, spend_date FROM campaign_spend WHERE spend_date BETWEEN '${campaign_start}' AND '${campaign_end}' AND spend_amount >= ${min_spend_threshold}"
+        }
+      ]
+    },
+    {
+      "ID": "700700702.OPTIONS",
+      "Options": [
+        {
+          "key": "query",
+          "value": "SELECT conversion_id, campaign_id, customer_id, conversion_date, revenue_amount, product_category, attribution_model FROM conversions WHERE conversion_date BETWEEN '${campaign_start}' AND '${campaign_end}'"
+        }
+      ]
+    },
+    {
+      "ID": "700700703.OPTIONS",
+      "Options": [
+        {
+          "key": "path",
+          "value": "/app/seed-data/customer_segments.parquet"
+        },
+        {
+          "key": "sourceFilter",
+          "value": "segment_name IS NOT NULL"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineMappingMP": [
+    {
+      "ID": "spend_agg_df",
+      "Options": [
+        {
+          "key": "col(mysql_spend_df.campaign_id).alias(campaign_id)"
+        },
+        {
+          "key": "col(mysql_spend_df.channel).alias(channel)"
+        },
+        {
+          "key": "col(mysql_spend_df.spend_amount).alias(spend_amount)"
+        },
+        {
+          "key": "col(mysql_spend_df.impressions).alias(impressions)"
+        },
+        {
+          "key": "col(mysql_spend_df.clicks).alias(clicks)"
+        },
+        {
+          "key": "expr(mysql_spend_df.clicks * 100.0 / mysql_spend_df.impressions).alias(click_through_rate)"
+        }
+      ]
+    },
+    {
+      "ID": "spend_agg_df.srcFilter",
+      "Options": [
+        {
+          "key": "expr(mysql_spend_df.impressions > 0)"
+        }
+      ]
+    },
+    {
+      "ID": "conversion_with_segment_df",
+      "Options": [
+        {
+          "key": "col(hive_conversion_df.conversion_id).alias(conversion_id)"
+        },
+        {
+          "key": "col(hive_conversion_df.campaign_id).alias(campaign_id)"
+        },
+        {
+          "key": "col(hive_conversion_df.revenue_amount).alias(revenue_amount)"
+        },
+        {
+          "key": "col(hive_conversion_df.product_category).alias(product_category)"
+        },
+        {
+          "key": "col(parquet_segments_df.segment_name).alias(segment_name)"
+        },
+        {
+          "key": "col(parquet_segments_df.lifetime_value_tier).alias(ltv_tier)"
+        }
+      ]
+    },
+    {
+      "ID": "conversion_with_segment_df.joinExpression",
+      "Options": [
+        {
+          "key": "expr(hive_conversion_df.customer_id == parquet_segments_df.customer_id)"
+        }
+      ]
+    },
+    {
+      "ID": "conversion_with_segment_df.srcBFilter",
+      "Options": [
+        {
+          "key": "expr(parquet_segments_df.is_active == true)"
+        }
+      ]
+    },
+    {
+      "ID": "campaign_roi_df",
+      "Options": [
+        {
+          "key": "col(spend_agg_df.campaign_id).alias(campaign_id)"
+        },
+        {
+          "key": "col(spend_agg_df.channel).alias(channel)"
+        },
+        {
+          "key": "col(spend_agg_df.spend_amount).alias(spend_amount)"
+        },
+        {
+          "key": "col(spend_agg_df.click_through_rate).alias(ctr)"
+        },
+        {
+          "key": "col(conversion_with_segment_df.revenue_amount).alias(revenue_amount)"
+        },
+        {
+          "key": "col(conversion_with_segment_df.segment_name).alias(segment_name)"
+        },
+        {
+          "key": "col(conversion_with_segment_df.ltv_tier).alias(ltv_tier)"
+        }
+      ]
+    },
+    {
+      "ID": "campaign_roi_df.joinExpression",
+      "Options": [
+        {
+          "key": "expr(spend_agg_df.campaign_id == conversion_with_segment_df.campaign_id)"
+        }
+      ]
+    },
+    {
+      "ID": "campaign_roi_df.srcAFilter",
+      "Options": [
+        {
+          "key": "expr(spend_agg_df.spend_amount > 0)"
+        }
+      ]
+    },
+    {
+      "ID": "roi_summary_df.groupBy",
+      "Options": [
+        {
+          "key": "col(channel)"
+        },
+        {
+          "key": "col(segment_name)"
+        },
+        {
+          "key": "col(ltv_tier)"
+        }
+      ]
+    },
+    {
+      "ID": "roi_summary_df.agg",
+      "Options": [
+        {
+          "key": "expr(SUM(spend_amount)).alias(total_spend)"
+        },
+        {
+          "key": "expr(SUM(revenue_amount)).alias(total_revenue)"
+        },
+        {
+          "key": "expr((SUM(revenue_amount) - SUM(spend_amount)) / SUM(spend_amount) * 100).alias(roi_pct)"
+        },
+        {
+          "key": "expr(COUNT(DISTINCT campaign_id)).alias(campaign_count)"
+        },
+        {
+          "key": "expr(AVG(ctr)).alias(avg_ctr)"
+        }
+      ]
+    },
+    {
+      "ID": "roi_summary_df.sort",
+      "Options": [
+        {
+          "key": "col(roi_pct).desc()"
+        },
+        {
+          "key": "col(total_revenue).desc()"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineMapSrcMap": [
+    {
+      "ID": "spend_agg_df",
+      "Options": [
+        {
+          "key": "source",
+          "value": "mysql_spend_df"
+        }
+      ]
+    },
+    {
+      "ID": "roi_summary_df",
+      "Options": [
+        {
+          "key": "source",
+          "value": "campaign_roi_df"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineJoiSrcMap": [
+    {
+      "ID": "conversion_with_segment_df",
+      "Options": [
+        {
+          "key": "joinType",
+          "value": "left"
+        },
+        {
+          "key": "sourceA",
+          "value": "hive_conversion_df"
+        },
+        {
+          "key": "sourceB",
+          "value": "parquet_segments_df"
+        }
+      ]
+    },
+    {
+      "ID": "campaign_roi_df",
+      "Options": [
+        {
+          "key": "joinType",
+          "value": "inner"
+        },
+        {
+          "key": "sourceA",
+          "value": "spend_agg_df"
+        },
+        {
+          "key": "sourceB",
+          "value": "conversion_with_segment_df"
+        }
+      ]
+    }
+  ],
+  "sourceDfPipeline": [
+    {
+      "ID": "mysql_spend_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "connection",
+          "value": 99
+        },
+        {
+          "key": "source",
+          "value": 700700701
+        }
+      ]
+    },
+    {
+      "ID": "hive_conversion_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "hive"
+        },
+        {
+          "key": "connection",
+          "value": 18
+        },
+        {
+          "key": "source",
+          "value": 700700702
+        }
+      ]
+    },
+    {
+      "ID": "parquet_segments_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "parquet"
+        },
+        {
+          "key": "connection",
+          "value": 18
+        },
+        {
+          "key": "source",
+          "value": 700700703
+        }
+      ]
+    }
+  ],
+  "derivedDfPipeline": [
+    {
+      "ID": "spend_agg_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "map"
+        }
+      ]
+    },
+    {
+      "ID": "conversion_with_segment_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "join"
+        }
+      ]
+    },
+    {
+      "ID": "campaign_roi_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "join"
+        }
+      ]
+    },
+    {
+      "ID": "roi_summary_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "agg"
+        }
+      ]
+    }
+  ],
+  "outputDfPipeline": [
+    {
+      "ID": "roi_summary_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "parquet"
+        },
+        {
+          "key": "target",
+          "value": 4007001
+        },
+        {
+          "key": "connection",
+          "value": 18
+        }
+      ]
+    },
+    {
+      "ID": "roi_summary_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "target",
+          "value": 4007002
+        },
+        {
+          "key": "connection",
+          "value": 99
+        }
+      ]
+    }
+  ],
+  "tgtDFsMP": [
+    {
+      "ID": "4007001.FORMAT",
+      "Options": [
+        {
+          "key": "parquet"
+        }
+      ]
+    },
+    {
+      "ID": "4007002.FORMAT",
+      "Options": [
+        {
+          "key": "jdbc"
+        }
+      ]
+    },
+    {
+      "ID": "4007002.TABLE",
+      "Options": [
+        {
+          "key": "marketing_campaign_roi"
+        }
+      ]
+    }
+  ],
+  "tgtDFsOptionsMP": [
+    {
+      "ID": "4007001.OPTIONS",
+      "Options": [
+        {
+          "key": "path",
+          "value": "/app/output/marketing/campaign_roi"
+        },
+        {
+          "key": "mode",
+          "value": "overwrite"
+        }
+      ]
+    },
+    {
+      "ID": "4007002.OPTIONS",
+      "Options": [
+        {
+          "key": "batchsize",
+          "value": 2000
+        },
+        {
+          "key": "mode",
+          "value": "overwrite"
+        }
+      ]
+    }
+  ]
+}

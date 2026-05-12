@@ -1,0 +1,603 @@
+{
+  "variablesMP": [
+    {
+      "ID": "SUPPLY_CHAIN_INVENTORY_JOB",
+      "Options": [
+        {
+          "key": "snapshot_date",
+          "value": "2025-12-31"
+        },
+        {
+          "key": "reorder_lead_days",
+          "value": 14
+        },
+        {
+          "key": "safety_stock_multiplier",
+          "value": 1.5
+        },
+        {
+          "key": "warehouse_region",
+          "value": "ALL"
+        }
+      ]
+    }
+  ],
+  "connectionDetailsMP": [
+    {
+      "ID": 57,
+      "Options": [
+        {
+          "key": "driver",
+          "value": "oracle.jdbc.OracleDriver"
+        },
+        {
+          "key": "url",
+          "value": "jdbc:oracle:thin:@localhost:1521/XEPDB1"
+        },
+        {
+          "key": "user",
+          "value": "admin"
+        },
+        {
+          "key": "password",
+          "value": "secret"
+        }
+      ]
+    },
+    {
+      "ID": 18,
+      "Options": [
+        {
+          "key": "driver",
+          "value": "org.apache.hive.jdbc.HiveDriver"
+        },
+        {
+          "key": "url",
+          "value": "jdbc:hive2://hive-server:10000/default"
+        },
+        {
+          "key": "user",
+          "value": "hive"
+        },
+        {
+          "key": "password",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "ID": 99,
+      "Options": [
+        {
+          "key": "driver",
+          "value": "com.mysql.cj.jdbc.Driver"
+        },
+        {
+          "key": "url",
+          "value": "jdbc:mysql://mysql-db:3306/products_db"
+        },
+        {
+          "key": "user",
+          "value": "mysqluser"
+        },
+        {
+          "key": "password",
+          "value": "mysqlpass"
+        }
+      ]
+    }
+  ],
+  "srcDFsOptionsMP": [
+    {
+      "ID": "800800801.OPTIONS",
+      "Options": [
+        {
+          "key": "query",
+          "value": "SELECT warehouse_id, sku, product_name, quantity_on_hand, unit_cost, last_count_date, warehouse_zone, bin_location FROM warehouse_stock WHERE snapshot_date = '${snapshot_date}'"
+        }
+      ]
+    },
+    {
+      "ID": "800800802.OPTIONS",
+      "Options": [
+        {
+          "key": "query",
+          "value": "SELECT po_id, sku, supplier_id, order_qty, received_qty, po_date, expected_delivery, status FROM purchase_orders WHERE status IN ('OPEN', 'IN_TRANSIT', 'PARTIALLY_RECEIVED')"
+        }
+      ]
+    },
+    {
+      "ID": "800800803.OPTIONS",
+      "Options": [
+        {
+          "key": "path",
+          "value": "/app/seed-data/demand_forecast.parquet"
+        },
+        {
+          "key": "sourceFilter",
+          "value": "forecast_period >= '2026-01'"
+        }
+      ]
+    },
+    {
+      "ID": "800800804.OPTIONS",
+      "Options": [
+        {
+          "key": "query",
+          "value": "SELECT supplier_id, supplier_name, lead_time_days, reliability_score, payment_terms FROM suppliers WHERE is_active = 'Y'"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineMappingMP": [
+    {
+      "ID": "stock_base_df",
+      "Options": [
+        {
+          "key": "col(oracle_stock_df.warehouse_id).alias(warehouse_id)"
+        },
+        {
+          "key": "col(oracle_stock_df.sku).alias(sku)"
+        },
+        {
+          "key": "col(oracle_stock_df.product_name).alias(product_name)"
+        },
+        {
+          "key": "col(oracle_stock_df.quantity_on_hand).alias(qty_on_hand)"
+        },
+        {
+          "key": "col(oracle_stock_df.unit_cost).alias(unit_cost)"
+        },
+        {
+          "key": "expr(oracle_stock_df.quantity_on_hand * oracle_stock_df.unit_cost).alias(inventory_value)"
+        }
+      ]
+    },
+    {
+      "ID": "po_pending_df",
+      "Options": [
+        {
+          "key": "col(mysql_po_df.po_id).alias(po_id)"
+        },
+        {
+          "key": "col(mysql_po_df.sku).alias(sku)"
+        },
+        {
+          "key": "col(mysql_po_df.supplier_id).alias(supplier_id)"
+        },
+        {
+          "key": "expr(mysql_po_df.order_qty - mysql_po_df.received_qty).alias(pending_qty)"
+        },
+        {
+          "key": "col(mysql_po_df.expected_delivery).alias(expected_delivery)"
+        },
+        {
+          "key": "col(mysql_po_df.status).alias(po_status)"
+        }
+      ]
+    },
+    {
+      "ID": "po_pending_df.srcFilter",
+      "Options": [
+        {
+          "key": "expr(mysql_po_df.order_qty > mysql_po_df.received_qty)"
+        }
+      ]
+    },
+    {
+      "ID": "stock_with_po_df",
+      "Options": [
+        {
+          "key": "col(stock_base_df.warehouse_id).alias(warehouse_id)"
+        },
+        {
+          "key": "col(stock_base_df.sku).alias(sku)"
+        },
+        {
+          "key": "col(stock_base_df.product_name).alias(product_name)"
+        },
+        {
+          "key": "col(stock_base_df.qty_on_hand).alias(qty_on_hand)"
+        },
+        {
+          "key": "col(stock_base_df.unit_cost).alias(unit_cost)"
+        },
+        {
+          "key": "col(stock_base_df.inventory_value).alias(inventory_value)"
+        },
+        {
+          "key": "col(po_pending_df.pending_qty).alias(pending_qty)"
+        },
+        {
+          "key": "col(po_pending_df.supplier_id).alias(supplier_id)"
+        },
+        {
+          "key": "col(po_pending_df.expected_delivery).alias(expected_delivery)"
+        }
+      ]
+    },
+    {
+      "ID": "stock_with_po_df.joinExpression",
+      "Options": [
+        {
+          "key": "expr(stock_base_df.sku == po_pending_df.sku)"
+        }
+      ]
+    },
+    {
+      "ID": "stock_with_demand_df",
+      "Options": [
+        {
+          "key": "col(stock_with_po_df.warehouse_id).alias(warehouse_id)"
+        },
+        {
+          "key": "col(stock_with_po_df.sku).alias(sku)"
+        },
+        {
+          "key": "col(stock_with_po_df.product_name).alias(product_name)"
+        },
+        {
+          "key": "col(stock_with_po_df.qty_on_hand).alias(qty_on_hand)"
+        },
+        {
+          "key": "col(stock_with_po_df.unit_cost).alias(unit_cost)"
+        },
+        {
+          "key": "col(stock_with_po_df.pending_qty).alias(pending_qty)"
+        },
+        {
+          "key": "col(stock_with_po_df.supplier_id).alias(supplier_id)"
+        },
+        {
+          "key": "col(parquet_demand_df.forecast_qty).alias(forecast_demand)"
+        },
+        {
+          "key": "col(parquet_demand_df.forecast_period).alias(forecast_period)"
+        },
+        {
+          "key": "expr(stock_with_po_df.qty_on_hand + COALESCE(stock_with_po_df.pending_qty, 0) - parquet_demand_df.forecast_qty).alias(projected_balance)"
+        },
+        {
+          "key": "expr(parquet_demand_df.forecast_qty * ${safety_stock_multiplier}).alias(safety_stock_level)"
+        }
+      ]
+    },
+    {
+      "ID": "stock_with_demand_df.joinExpression",
+      "Options": [
+        {
+          "key": "expr(stock_with_po_df.sku == parquet_demand_df.sku)"
+        },
+        {
+          "key": "expr(stock_with_po_df.warehouse_id == parquet_demand_df.warehouse_id)"
+        }
+      ]
+    },
+    {
+      "ID": "reorder_calc_df.groupBy",
+      "Options": [
+        {
+          "key": "col(warehouse_id)"
+        },
+        {
+          "key": "col(sku)"
+        },
+        {
+          "key": "col(product_name)"
+        },
+        {
+          "key": "col(unit_cost)"
+        },
+        {
+          "key": "col(supplier_id)"
+        }
+      ]
+    },
+    {
+      "ID": "reorder_calc_df.agg",
+      "Options": [
+        {
+          "key": "expr(MAX(qty_on_hand)).alias(current_stock)"
+        },
+        {
+          "key": "expr(SUM(COALESCE(pending_qty, 0))).alias(total_pending)"
+        },
+        {
+          "key": "expr(SUM(forecast_demand)).alias(total_forecast_demand)"
+        },
+        {
+          "key": "expr(MAX(safety_stock_level)).alias(safety_stock)"
+        },
+        {
+          "key": "expr(CASE WHEN (MAX(qty_on_hand) + SUM(COALESCE(pending_qty, 0)) - SUM(forecast_demand)) < MAX(safety_stock_level) THEN MAX(safety_stock_level) - (MAX(qty_on_hand) + SUM(COALESCE(pending_qty, 0)) - SUM(forecast_demand)) ELSE 0 END).alias(reorder_qty)"
+        },
+        {
+          "key": "expr(CASE WHEN (MAX(qty_on_hand) + SUM(COALESCE(pending_qty, 0)) - SUM(forecast_demand)) < MAX(safety_stock_level) THEN (MAX(safety_stock_level) - (MAX(qty_on_hand) + SUM(COALESCE(pending_qty, 0)) - SUM(forecast_demand))) * MAX(unit_cost) ELSE 0 END).alias(reorder_value)"
+        }
+      ]
+    },
+    {
+      "ID": "reorder_calc_df.sort",
+      "Options": [
+        {
+          "key": "col(reorder_qty).desc()"
+        },
+        {
+          "key": "col(warehouse_id)"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineMapSrcMap": [
+    {
+      "ID": "stock_base_df",
+      "Options": [
+        {
+          "key": "source",
+          "value": "oracle_stock_df"
+        }
+      ]
+    },
+    {
+      "ID": "po_pending_df",
+      "Options": [
+        {
+          "key": "source",
+          "value": "mysql_po_df"
+        }
+      ]
+    },
+    {
+      "ID": "reorder_calc_df",
+      "Options": [
+        {
+          "key": "source",
+          "value": "stock_with_demand_df"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineJoiSrcMap": [
+    {
+      "ID": "stock_with_po_df",
+      "Options": [
+        {
+          "key": "joinType",
+          "value": "left"
+        },
+        {
+          "key": "sourceA",
+          "value": "stock_base_df"
+        },
+        {
+          "key": "sourceB",
+          "value": "po_pending_df"
+        }
+      ]
+    },
+    {
+      "ID": "stock_with_demand_df",
+      "Options": [
+        {
+          "key": "joinType",
+          "value": "inner"
+        },
+        {
+          "key": "sourceA",
+          "value": "stock_with_po_df"
+        },
+        {
+          "key": "sourceB",
+          "value": "parquet_demand_df"
+        }
+      ]
+    }
+  ],
+  "sourceDfPipeline": [
+    {
+      "ID": "oracle_stock_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "connection",
+          "value": 57
+        },
+        {
+          "key": "source",
+          "value": 800800801
+        }
+      ]
+    },
+    {
+      "ID": "mysql_po_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "connection",
+          "value": 99
+        },
+        {
+          "key": "source",
+          "value": 800800802
+        }
+      ]
+    },
+    {
+      "ID": "parquet_demand_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "parquet"
+        },
+        {
+          "key": "connection",
+          "value": 18
+        },
+        {
+          "key": "source",
+          "value": 800800803
+        }
+      ]
+    },
+    {
+      "ID": "mysql_supplier_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "connection",
+          "value": 99
+        },
+        {
+          "key": "source",
+          "value": 800800804
+        }
+      ]
+    }
+  ],
+  "derivedDfPipeline": [
+    {
+      "ID": "stock_base_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "map"
+        }
+      ]
+    },
+    {
+      "ID": "po_pending_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "map"
+        }
+      ]
+    },
+    {
+      "ID": "stock_with_po_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "join"
+        }
+      ]
+    },
+    {
+      "ID": "stock_with_demand_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "join"
+        }
+      ]
+    },
+    {
+      "ID": "reorder_calc_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "agg"
+        }
+      ]
+    }
+  ],
+  "outputDfPipeline": [
+    {
+      "ID": "reorder_calc_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "target",
+          "value": 4008001
+        },
+        {
+          "key": "connection",
+          "value": 57
+        }
+      ]
+    },
+    {
+      "ID": "reorder_calc_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "parquet"
+        },
+        {
+          "key": "target",
+          "value": 4008002
+        },
+        {
+          "key": "connection",
+          "value": 18
+        }
+      ]
+    }
+  ],
+  "tgtDFsMP": [
+    {
+      "ID": "4008001.FORMAT",
+      "Options": [
+        {
+          "key": "jdbc"
+        }
+      ]
+    },
+    {
+      "ID": "4008001.TABLE",
+      "Options": [
+        {
+          "key": "inventory_reorder_report"
+        }
+      ]
+    },
+    {
+      "ID": "4008002.FORMAT",
+      "Options": [
+        {
+          "key": "parquet"
+        }
+      ]
+    }
+  ],
+  "tgtDFsOptionsMP": [
+    {
+      "ID": "4008001.OPTIONS",
+      "Options": [
+        {
+          "key": "batchsize",
+          "value": 5000
+        },
+        {
+          "key": "mode",
+          "value": "overwrite"
+        }
+      ]
+    },
+    {
+      "ID": "4008002.OPTIONS",
+      "Options": [
+        {
+          "key": "path",
+          "value": "/app/output/supply_chain/reorder_report"
+        },
+        {
+          "key": "mode",
+          "value": "overwrite"
+        }
+      ]
+    }
+  ]
+}

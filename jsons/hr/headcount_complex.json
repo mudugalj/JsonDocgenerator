@@ -1,0 +1,517 @@
+{
+  "variablesMP": [
+    {
+      "ID": "HR_HEADCOUNT_JOB",
+      "Options": [
+        {
+          "key": "snapshot_date",
+          "value": "2025-12-31"
+        },
+        {
+          "key": "company_code",
+          "value": "CORP"
+        },
+        {
+          "key": "include_contractors",
+          "value": "N"
+        }
+      ]
+    }
+  ],
+  "connectionDetailsMP": [
+    {
+      "ID": 57,
+      "Options": [
+        {
+          "key": "driver",
+          "value": "oracle.jdbc.OracleDriver"
+        },
+        {
+          "key": "url",
+          "value": "jdbc:oracle:thin:@localhost:1521/XEPDB1"
+        },
+        {
+          "key": "user",
+          "value": "admin"
+        },
+        {
+          "key": "password",
+          "value": "secret"
+        }
+      ]
+    },
+    {
+      "ID": 18,
+      "Options": [
+        {
+          "key": "driver",
+          "value": "org.apache.hive.jdbc.HiveDriver"
+        },
+        {
+          "key": "url",
+          "value": "jdbc:hive2://hive-server:10000/default"
+        },
+        {
+          "key": "user",
+          "value": "hive"
+        },
+        {
+          "key": "password",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "ID": 99,
+      "Options": [
+        {
+          "key": "driver",
+          "value": "com.mysql.cj.jdbc.Driver"
+        },
+        {
+          "key": "url",
+          "value": "jdbc:mysql://mysql-db:3306/products_db"
+        },
+        {
+          "key": "user",
+          "value": "mysqluser"
+        },
+        {
+          "key": "password",
+          "value": "mysqlpass"
+        }
+      ]
+    }
+  ],
+  "srcDFsOptionsMP": [
+    {
+      "ID": "500500501.OPTIONS",
+      "Options": [
+        {
+          "key": "query",
+          "value": "SELECT employee_id, first_name, last_name, department_id, job_title, hire_date, employment_type, salary, location_code, manager_id FROM employees WHERE status = 'ACTIVE' AND termination_date IS NULL"
+        }
+      ]
+    },
+    {
+      "ID": "500500502.OPTIONS",
+      "Options": [
+        {
+          "key": "query",
+          "value": "SELECT department_id, department_name, division, cost_center, vp_name, budget_headcount FROM departments WHERE is_active = 1"
+        }
+      ]
+    },
+    {
+      "ID": "500500503.OPTIONS",
+      "Options": [
+        {
+          "key": "path",
+          "value": "/app/seed-data/location_master.parquet"
+        },
+        {
+          "key": "sourceFilter",
+          "value": "country_code IS NOT NULL"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineMappingMP": [
+    {
+      "ID": "emp_base_df",
+      "Options": [
+        {
+          "key": "col(oracle_emp_df.employee_id).alias(employee_id)"
+        },
+        {
+          "key": "col(oracle_emp_df.department_id).alias(department_id)"
+        },
+        {
+          "key": "col(oracle_emp_df.job_title).alias(job_title)"
+        },
+        {
+          "key": "col(oracle_emp_df.employment_type).alias(employment_type)"
+        },
+        {
+          "key": "col(oracle_emp_df.salary).alias(salary)"
+        },
+        {
+          "key": "col(oracle_emp_df.location_code).alias(location_code)"
+        },
+        {
+          "key": "expr(DATEDIFF('${snapshot_date}', oracle_emp_df.hire_date) / 365).alias(tenure_years)"
+        }
+      ]
+    },
+    {
+      "ID": "emp_base_df.srcFilter",
+      "Options": [
+        {
+          "key": "expr(oracle_emp_df.employment_type != 'CONTRACTOR' OR '${include_contractors}' == 'Y')"
+        }
+      ]
+    },
+    {
+      "ID": "emp_with_dept_df",
+      "Options": [
+        {
+          "key": "col(emp_base_df.employee_id).alias(employee_id)"
+        },
+        {
+          "key": "col(emp_base_df.job_title).alias(job_title)"
+        },
+        {
+          "key": "col(emp_base_df.employment_type).alias(employment_type)"
+        },
+        {
+          "key": "col(emp_base_df.salary).alias(salary)"
+        },
+        {
+          "key": "col(emp_base_df.location_code).alias(location_code)"
+        },
+        {
+          "key": "col(emp_base_df.tenure_years).alias(tenure_years)"
+        },
+        {
+          "key": "col(mysql_dept_df.department_name).alias(department_name)"
+        },
+        {
+          "key": "col(mysql_dept_df.division).alias(division)"
+        },
+        {
+          "key": "col(mysql_dept_df.budget_headcount).alias(budget_headcount)"
+        }
+      ]
+    },
+    {
+      "ID": "emp_with_dept_df.joinExpression",
+      "Options": [
+        {
+          "key": "expr(emp_base_df.department_id == mysql_dept_df.department_id)"
+        }
+      ]
+    },
+    {
+      "ID": "emp_enriched_df",
+      "Options": [
+        {
+          "key": "col(emp_with_dept_df.employee_id).alias(employee_id)"
+        },
+        {
+          "key": "col(emp_with_dept_df.job_title).alias(job_title)"
+        },
+        {
+          "key": "col(emp_with_dept_df.salary).alias(salary)"
+        },
+        {
+          "key": "col(emp_with_dept_df.tenure_years).alias(tenure_years)"
+        },
+        {
+          "key": "col(emp_with_dept_df.department_name).alias(department_name)"
+        },
+        {
+          "key": "col(emp_with_dept_df.division).alias(division)"
+        },
+        {
+          "key": "col(emp_with_dept_df.budget_headcount).alias(budget_headcount)"
+        },
+        {
+          "key": "col(parquet_location_df.city).alias(city)"
+        },
+        {
+          "key": "col(parquet_location_df.country_code).alias(country_code)"
+        }
+      ]
+    },
+    {
+      "ID": "emp_enriched_df.joinExpression",
+      "Options": [
+        {
+          "key": "expr(emp_with_dept_df.location_code == parquet_location_df.location_code)"
+        }
+      ]
+    },
+    {
+      "ID": "headcount_summary_df.groupBy",
+      "Options": [
+        {
+          "key": "col(division)"
+        },
+        {
+          "key": "col(department_name)"
+        },
+        {
+          "key": "col(country_code)"
+        }
+      ]
+    },
+    {
+      "ID": "headcount_summary_df.agg",
+      "Options": [
+        {
+          "key": "expr(COUNT(employee_id)).alias(actual_headcount)"
+        },
+        {
+          "key": "expr(MAX(budget_headcount)).alias(budget_headcount)"
+        },
+        {
+          "key": "expr(AVG(salary)).alias(avg_salary)"
+        },
+        {
+          "key": "expr(AVG(tenure_years)).alias(avg_tenure)"
+        },
+        {
+          "key": "expr(SUM(salary)).alias(total_salary_cost)"
+        }
+      ]
+    },
+    {
+      "ID": "headcount_summary_df.sort",
+      "Options": [
+        {
+          "key": "col(division)"
+        },
+        {
+          "key": "col(department_name)"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineMapSrcMap": [
+    {
+      "ID": "emp_base_df",
+      "Options": [
+        {
+          "key": "source",
+          "value": "oracle_emp_df"
+        }
+      ]
+    },
+    {
+      "ID": "headcount_summary_df",
+      "Options": [
+        {
+          "key": "source",
+          "value": "emp_enriched_df"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineJoiSrcMap": [
+    {
+      "ID": "emp_with_dept_df",
+      "Options": [
+        {
+          "key": "joinType",
+          "value": "inner"
+        },
+        {
+          "key": "sourceA",
+          "value": "emp_base_df"
+        },
+        {
+          "key": "sourceB",
+          "value": "mysql_dept_df"
+        }
+      ]
+    },
+    {
+      "ID": "emp_enriched_df",
+      "Options": [
+        {
+          "key": "joinType",
+          "value": "left"
+        },
+        {
+          "key": "sourceA",
+          "value": "emp_with_dept_df"
+        },
+        {
+          "key": "sourceB",
+          "value": "parquet_location_df"
+        }
+      ]
+    }
+  ],
+  "sourceDfPipeline": [
+    {
+      "ID": "oracle_emp_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "connection",
+          "value": 57
+        },
+        {
+          "key": "source",
+          "value": 500500501
+        }
+      ]
+    },
+    {
+      "ID": "mysql_dept_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "connection",
+          "value": 99
+        },
+        {
+          "key": "source",
+          "value": 500500502
+        }
+      ]
+    },
+    {
+      "ID": "parquet_location_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "parquet"
+        },
+        {
+          "key": "connection",
+          "value": 18
+        },
+        {
+          "key": "source",
+          "value": 500500503
+        }
+      ]
+    }
+  ],
+  "derivedDfPipeline": [
+    {
+      "ID": "emp_base_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "map"
+        }
+      ]
+    },
+    {
+      "ID": "emp_with_dept_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "join"
+        }
+      ]
+    },
+    {
+      "ID": "emp_enriched_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "join"
+        }
+      ]
+    },
+    {
+      "ID": "headcount_summary_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "agg"
+        }
+      ]
+    }
+  ],
+  "outputDfPipeline": [
+    {
+      "ID": "headcount_summary_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "parquet"
+        },
+        {
+          "key": "target",
+          "value": 4005001
+        },
+        {
+          "key": "connection",
+          "value": 18
+        }
+      ]
+    },
+    {
+      "ID": "headcount_summary_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "target",
+          "value": 4005002
+        },
+        {
+          "key": "connection",
+          "value": 57
+        }
+      ]
+    }
+  ],
+  "tgtDFsMP": [
+    {
+      "ID": "4005001.FORMAT",
+      "Options": [
+        {
+          "key": "parquet"
+        }
+      ]
+    },
+    {
+      "ID": "4005002.FORMAT",
+      "Options": [
+        {
+          "key": "jdbc"
+        }
+      ]
+    },
+    {
+      "ID": "4005002.TABLE",
+      "Options": [
+        {
+          "key": "hr_headcount_report"
+        }
+      ]
+    }
+  ],
+  "tgtDFsOptionsMP": [
+    {
+      "ID": "4005001.OPTIONS",
+      "Options": [
+        {
+          "key": "path",
+          "value": "/app/output/hr/headcount_summary"
+        },
+        {
+          "key": "mode",
+          "value": "overwrite"
+        }
+      ]
+    },
+    {
+      "ID": "4005002.OPTIONS",
+      "Options": [
+        {
+          "key": "batchsize",
+          "value": 2000
+        },
+        {
+          "key": "mode",
+          "value": "overwrite"
+        }
+      ]
+    }
+  ]
+}

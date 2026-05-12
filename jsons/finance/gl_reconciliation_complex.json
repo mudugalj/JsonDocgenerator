@@ -1,0 +1,438 @@
+{
+  "variablesMP": [
+    {
+      "ID": "GL_RECONCILIATION_JOB",
+      "Options": [
+        {
+          "key": "fiscal_year",
+          "value": 2025
+        },
+        {
+          "key": "fiscal_period",
+          "value": "Q4"
+        },
+        {
+          "key": "company_code",
+          "value": "US01"
+        }
+      ]
+    }
+  ],
+  "connectionDetailsMP": [
+    {
+      "ID": 57,
+      "Options": [
+        {
+          "key": "driver",
+          "value": "oracle.jdbc.OracleDriver"
+        },
+        {
+          "key": "url",
+          "value": "jdbc:oracle:thin:@localhost:1521/XEPDB1"
+        },
+        {
+          "key": "user",
+          "value": "admin"
+        },
+        {
+          "key": "password",
+          "value": "secret"
+        }
+      ]
+    },
+    {
+      "ID": 99,
+      "Options": [
+        {
+          "key": "driver",
+          "value": "com.mysql.cj.jdbc.Driver"
+        },
+        {
+          "key": "url",
+          "value": "jdbc:mysql://mysql-db:3306/products_db"
+        },
+        {
+          "key": "user",
+          "value": "mysqluser"
+        },
+        {
+          "key": "password",
+          "value": "mysqlpass"
+        }
+      ]
+    }
+  ],
+  "srcDFsOptionsMP": [
+    {
+      "ID": "100100101.OPTIONS",
+      "Options": [
+        {
+          "key": "query",
+          "value": "SELECT journal_id, account_code, cost_center_id, debit_amt, credit_amt, posting_date, company_code FROM gl_journal_entries WHERE fiscal_year = ${fiscal_year} AND company_code = '${company_code}'"
+        }
+      ]
+    },
+    {
+      "ID": "100100102.OPTIONS",
+      "Options": [
+        {
+          "key": "query",
+          "value": "SELECT cost_center_id, cost_center_name, department, manager_id, is_active FROM cost_centers WHERE is_active = 1"
+        }
+      ]
+    },
+    {
+      "ID": "100100103.OPTIONS",
+      "Options": [
+        {
+          "key": "dbtable",
+          "value": "(SELECT account_code, account_name, account_type, parent_account FROM chart_of_accounts WHERE company_code = '${company_code}') tmp"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineMappingMP": [
+    {
+      "ID": "gl_entries_df",
+      "Options": [
+        {
+          "key": "col(oracle_gl_src_df.journal_id).alias(journal_id)"
+        },
+        {
+          "key": "col(oracle_gl_src_df.account_code).alias(account_code)"
+        },
+        {
+          "key": "col(oracle_gl_src_df.cost_center_id).alias(cost_center_id)"
+        },
+        {
+          "key": "col(oracle_gl_src_df.debit_amt).alias(debit_amt)"
+        },
+        {
+          "key": "col(oracle_gl_src_df.credit_amt).alias(credit_amt)"
+        },
+        {
+          "key": "expr(oracle_gl_src_df.debit_amt - oracle_gl_src_df.credit_amt).alias(net_amount)"
+        }
+      ]
+    },
+    {
+      "ID": "gl_entries_df.srcFilter",
+      "Options": [
+        {
+          "key": "expr(oracle_gl_src_df.posting_date >= '${fiscal_year}-10-01')"
+        }
+      ]
+    },
+    {
+      "ID": "gl_with_costcenter_df",
+      "Options": [
+        {
+          "key": "col(gl_entries_df.journal_id).alias(journal_id)"
+        },
+        {
+          "key": "col(gl_entries_df.account_code).alias(account_code)"
+        },
+        {
+          "key": "col(gl_entries_df.net_amount).alias(net_amount)"
+        },
+        {
+          "key": "col(mysql_costcenter_df.cost_center_name).alias(cost_center_name)"
+        },
+        {
+          "key": "col(mysql_costcenter_df.department).alias(department)"
+        }
+      ]
+    },
+    {
+      "ID": "gl_with_costcenter_df.srcAFilter",
+      "Options": [
+        {
+          "key": "expr(gl_entries_df.net_amount != 0)"
+        }
+      ]
+    },
+    {
+      "ID": "gl_with_costcenter_df.joinExpression",
+      "Options": [
+        {
+          "key": "expr(gl_entries_df.cost_center_id == mysql_costcenter_df.cost_center_id)"
+        }
+      ]
+    },
+    {
+      "ID": "gl_enriched_df",
+      "Options": [
+        {
+          "key": "col(gl_with_costcenter_df.journal_id).alias(journal_id)"
+        },
+        {
+          "key": "col(gl_with_costcenter_df.account_code).alias(account_code)"
+        },
+        {
+          "key": "col(gl_with_costcenter_df.net_amount).alias(net_amount)"
+        },
+        {
+          "key": "col(gl_with_costcenter_df.cost_center_name).alias(cost_center_name)"
+        },
+        {
+          "key": "col(oracle_coa_df.account_name).alias(account_name)"
+        },
+        {
+          "key": "col(oracle_coa_df.account_type).alias(account_type)"
+        }
+      ]
+    },
+    {
+      "ID": "gl_enriched_df.joinExpression",
+      "Options": [
+        {
+          "key": "expr(gl_with_costcenter_df.account_code == oracle_coa_df.account_code)"
+        }
+      ]
+    },
+    {
+      "ID": "gl_recon_summary_df.groupBy",
+      "Options": [
+        {
+          "key": "col(account_code)"
+        },
+        {
+          "key": "col(account_name)"
+        },
+        {
+          "key": "col(account_type)"
+        },
+        {
+          "key": "col(cost_center_name)"
+        }
+      ]
+    },
+    {
+      "ID": "gl_recon_summary_df.agg",
+      "Options": [
+        {
+          "key": "expr(SUM(net_amount)).alias(total_net_amount)"
+        },
+        {
+          "key": "expr(COUNT(journal_id)).alias(entry_count)"
+        },
+        {
+          "key": "expr(SUM(CASE WHEN net_amount > 0 THEN net_amount ELSE 0 END)).alias(total_debit)"
+        },
+        {
+          "key": "expr(SUM(CASE WHEN net_amount < 0 THEN ABS(net_amount) ELSE 0 END)).alias(total_credit)"
+        }
+      ]
+    },
+    {
+      "ID": "gl_recon_summary_df.sort",
+      "Options": [
+        {
+          "key": "col(account_type)"
+        },
+        {
+          "key": "col(total_net_amount).desc()"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineMapSrcMap": [
+    {
+      "ID": "gl_entries_df",
+      "Options": [
+        {
+          "key": "source",
+          "value": "oracle_gl_src_df"
+        }
+      ]
+    },
+    {
+      "ID": "gl_recon_summary_df",
+      "Options": [
+        {
+          "key": "source",
+          "value": "gl_enriched_df"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineJoiSrcMap": [
+    {
+      "ID": "gl_with_costcenter_df",
+      "Options": [
+        {
+          "key": "joinType",
+          "value": "inner"
+        },
+        {
+          "key": "sourceA",
+          "value": "gl_entries_df"
+        },
+        {
+          "key": "sourceB",
+          "value": "mysql_costcenter_df"
+        }
+      ]
+    },
+    {
+      "ID": "gl_enriched_df",
+      "Options": [
+        {
+          "key": "joinType",
+          "value": "left"
+        },
+        {
+          "key": "sourceA",
+          "value": "gl_with_costcenter_df"
+        },
+        {
+          "key": "sourceB",
+          "value": "oracle_coa_df"
+        }
+      ]
+    }
+  ],
+  "sourceDfPipeline": [
+    {
+      "ID": "oracle_gl_src_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "connection",
+          "value": 57
+        },
+        {
+          "key": "source",
+          "value": 100100101
+        }
+      ]
+    },
+    {
+      "ID": "mysql_costcenter_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "connection",
+          "value": 99
+        },
+        {
+          "key": "source",
+          "value": 100100102
+        }
+      ]
+    },
+    {
+      "ID": "oracle_coa_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "connection",
+          "value": 57
+        },
+        {
+          "key": "source",
+          "value": 100100103
+        }
+      ]
+    }
+  ],
+  "derivedDfPipeline": [
+    {
+      "ID": "gl_entries_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "map"
+        }
+      ]
+    },
+    {
+      "ID": "gl_with_costcenter_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "join"
+        }
+      ]
+    },
+    {
+      "ID": "gl_enriched_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "join"
+        }
+      ]
+    },
+    {
+      "ID": "gl_recon_summary_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "agg"
+        }
+      ]
+    }
+  ],
+  "outputDfPipeline": [
+    {
+      "ID": "gl_recon_summary_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "target",
+          "value": 4001001
+        },
+        {
+          "key": "connection",
+          "value": 57
+        }
+      ]
+    }
+  ],
+  "tgtDFsMP": [
+    {
+      "ID": "4001001.FORMAT",
+      "Options": [
+        {
+          "key": "jdbc"
+        }
+      ]
+    },
+    {
+      "ID": "4001001.TABLE",
+      "Options": [
+        {
+          "key": "gl_reconciliation_summary"
+        }
+      ]
+    }
+  ],
+  "tgtDFsOptionsMP": [
+    {
+      "ID": "4001001.OPTIONS",
+      "Options": [
+        {
+          "key": "batchsize",
+          "value": 2000
+        },
+        {
+          "key": "mode",
+          "value": "overwrite"
+        }
+      ]
+    }
+  ]
+}

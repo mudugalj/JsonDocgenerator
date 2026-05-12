@@ -1,0 +1,454 @@
+{
+  "variablesMP": [
+    {
+      "ID": "SALES_COMMISSION_JOB",
+      "Options": [
+        {
+          "key": "commission_period",
+          "value": "2025-12"
+        },
+        {
+          "key": "payout_date",
+          "value": "2026-01-15"
+        },
+        {
+          "key": "min_attainment_pct",
+          "value": 50
+        }
+      ]
+    }
+  ],
+  "connectionDetailsMP": [
+    {
+      "ID": 57,
+      "Options": [
+        {
+          "key": "driver",
+          "value": "oracle.jdbc.OracleDriver"
+        },
+        {
+          "key": "url",
+          "value": "jdbc:oracle:thin:@localhost:1521/XEPDB1"
+        },
+        {
+          "key": "user",
+          "value": "admin"
+        },
+        {
+          "key": "password",
+          "value": "secret"
+        }
+      ]
+    },
+    {
+      "ID": 99,
+      "Options": [
+        {
+          "key": "driver",
+          "value": "com.mysql.cj.jdbc.Driver"
+        },
+        {
+          "key": "url",
+          "value": "jdbc:mysql://mysql-db:3306/products_db"
+        },
+        {
+          "key": "user",
+          "value": "mysqluser"
+        },
+        {
+          "key": "password",
+          "value": "mysqlpass"
+        }
+      ]
+    }
+  ],
+  "srcDFsOptionsMP": [
+    {
+      "ID": "400400401.OPTIONS",
+      "Options": [
+        {
+          "key": "query",
+          "value": "SELECT txn_id, rep_id, customer_id, product_id, sale_amount, discount_pct, txn_date, is_renewal FROM sales_transactions WHERE TO_CHAR(txn_date, 'YYYY-MM') = '${commission_period}' AND status = 'CLOSED_WON'"
+        }
+      ]
+    },
+    {
+      "ID": "400400402.OPTIONS",
+      "Options": [
+        {
+          "key": "query",
+          "value": "SELECT rep_id, rep_name, manager_id, annual_quota, commission_rate, accelerator_rate, tier FROM rep_targets WHERE fiscal_year = 2025 AND is_active = 1"
+        }
+      ]
+    },
+    {
+      "ID": "400400403.OPTIONS",
+      "Options": [
+        {
+          "key": "dbtable",
+          "value": "(SELECT rep_id, SUM(credited_amount) AS ytd_credited FROM sales_credits WHERE fiscal_year = 2025 AND period < '${commission_period}' GROUP BY rep_id) tmp"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineMappingMP": [
+    {
+      "ID": "txn_net_df",
+      "Options": [
+        {
+          "key": "col(oracle_txn_df.txn_id).alias(txn_id)"
+        },
+        {
+          "key": "col(oracle_txn_df.rep_id).alias(rep_id)"
+        },
+        {
+          "key": "col(oracle_txn_df.customer_id).alias(customer_id)"
+        },
+        {
+          "key": "expr(oracle_txn_df.sale_amount * (1 - oracle_txn_df.discount_pct / 100)).alias(net_sale_amount)"
+        },
+        {
+          "key": "col(oracle_txn_df.is_renewal).alias(is_renewal)"
+        }
+      ]
+    },
+    {
+      "ID": "txn_with_targets_df",
+      "Options": [
+        {
+          "key": "col(txn_net_df.txn_id).alias(txn_id)"
+        },
+        {
+          "key": "col(txn_net_df.rep_id).alias(rep_id)"
+        },
+        {
+          "key": "col(txn_net_df.net_sale_amount).alias(net_sale_amount)"
+        },
+        {
+          "key": "col(txn_net_df.is_renewal).alias(is_renewal)"
+        },
+        {
+          "key": "col(mysql_targets_df.rep_name).alias(rep_name)"
+        },
+        {
+          "key": "col(mysql_targets_df.annual_quota).alias(annual_quota)"
+        },
+        {
+          "key": "col(mysql_targets_df.commission_rate).alias(commission_rate)"
+        },
+        {
+          "key": "col(mysql_targets_df.accelerator_rate).alias(accelerator_rate)"
+        },
+        {
+          "key": "col(mysql_targets_df.tier).alias(rep_tier)"
+        }
+      ]
+    },
+    {
+      "ID": "txn_with_targets_df.joinExpression",
+      "Options": [
+        {
+          "key": "expr(txn_net_df.rep_id == mysql_targets_df.rep_id)"
+        }
+      ]
+    },
+    {
+      "ID": "txn_with_ytd_df",
+      "Options": [
+        {
+          "key": "col(txn_with_targets_df.txn_id).alias(txn_id)"
+        },
+        {
+          "key": "col(txn_with_targets_df.rep_id).alias(rep_id)"
+        },
+        {
+          "key": "col(txn_with_targets_df.rep_name).alias(rep_name)"
+        },
+        {
+          "key": "col(txn_with_targets_df.net_sale_amount).alias(net_sale_amount)"
+        },
+        {
+          "key": "col(txn_with_targets_df.annual_quota).alias(annual_quota)"
+        },
+        {
+          "key": "col(txn_with_targets_df.commission_rate).alias(commission_rate)"
+        },
+        {
+          "key": "col(txn_with_targets_df.accelerator_rate).alias(accelerator_rate)"
+        },
+        {
+          "key": "col(txn_with_targets_df.rep_tier).alias(rep_tier)"
+        },
+        {
+          "key": "col(oracle_ytd_df.ytd_credited).alias(ytd_credited)"
+        }
+      ]
+    },
+    {
+      "ID": "txn_with_ytd_df.joinExpression",
+      "Options": [
+        {
+          "key": "expr(txn_with_targets_df.rep_id == oracle_ytd_df.rep_id)"
+        }
+      ]
+    },
+    {
+      "ID": "txn_with_ytd_df.srcBFilter",
+      "Options": [
+        {
+          "key": "expr(oracle_ytd_df.ytd_credited > 0)"
+        }
+      ]
+    },
+    {
+      "ID": "commission_calc_df.groupBy",
+      "Options": [
+        {
+          "key": "col(rep_id)"
+        },
+        {
+          "key": "col(rep_name)"
+        },
+        {
+          "key": "col(rep_tier)"
+        },
+        {
+          "key": "col(annual_quota)"
+        },
+        {
+          "key": "col(commission_rate)"
+        },
+        {
+          "key": "col(accelerator_rate)"
+        }
+      ]
+    },
+    {
+      "ID": "commission_calc_df.agg",
+      "Options": [
+        {
+          "key": "expr(SUM(net_sale_amount)).alias(period_sales)"
+        },
+        {
+          "key": "expr(COUNT(txn_id)).alias(deal_count)"
+        },
+        {
+          "key": "expr(MAX(ytd_credited)).alias(ytd_prior)"
+        },
+        {
+          "key": "expr(SUM(net_sale_amount) * MAX(commission_rate) / 100).alias(base_commission)"
+        },
+        {
+          "key": "expr(CASE WHEN (MAX(ytd_credited) + SUM(net_sale_amount)) / MAX(annual_quota) > 1.0 THEN SUM(net_sale_amount) * MAX(accelerator_rate) / 100 ELSE 0 END).alias(accelerator_bonus)"
+        }
+      ]
+    },
+    {
+      "ID": "commission_calc_df.sort",
+      "Options": [
+        {
+          "key": "col(period_sales).desc()"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineMapSrcMap": [
+    {
+      "ID": "txn_net_df",
+      "Options": [
+        {
+          "key": "source",
+          "value": "oracle_txn_df"
+        }
+      ]
+    },
+    {
+      "ID": "commission_calc_df",
+      "Options": [
+        {
+          "key": "source",
+          "value": "txn_with_ytd_df"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineJoiSrcMap": [
+    {
+      "ID": "txn_with_targets_df",
+      "Options": [
+        {
+          "key": "joinType",
+          "value": "inner"
+        },
+        {
+          "key": "sourceA",
+          "value": "txn_net_df"
+        },
+        {
+          "key": "sourceB",
+          "value": "mysql_targets_df"
+        }
+      ]
+    },
+    {
+      "ID": "txn_with_ytd_df",
+      "Options": [
+        {
+          "key": "joinType",
+          "value": "left"
+        },
+        {
+          "key": "sourceA",
+          "value": "txn_with_targets_df"
+        },
+        {
+          "key": "sourceB",
+          "value": "oracle_ytd_df"
+        }
+      ]
+    }
+  ],
+  "sourceDfPipeline": [
+    {
+      "ID": "oracle_txn_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "connection",
+          "value": 57
+        },
+        {
+          "key": "source",
+          "value": 400400401
+        }
+      ]
+    },
+    {
+      "ID": "mysql_targets_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "connection",
+          "value": 99
+        },
+        {
+          "key": "source",
+          "value": 400400402
+        }
+      ]
+    },
+    {
+      "ID": "oracle_ytd_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "connection",
+          "value": 57
+        },
+        {
+          "key": "source",
+          "value": 400400403
+        }
+      ]
+    }
+  ],
+  "derivedDfPipeline": [
+    {
+      "ID": "txn_net_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "map"
+        }
+      ]
+    },
+    {
+      "ID": "txn_with_targets_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "join"
+        }
+      ]
+    },
+    {
+      "ID": "txn_with_ytd_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "join"
+        }
+      ]
+    },
+    {
+      "ID": "commission_calc_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "agg"
+        }
+      ]
+    }
+  ],
+  "outputDfPipeline": [
+    {
+      "ID": "commission_calc_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "target",
+          "value": 4004001
+        },
+        {
+          "key": "connection",
+          "value": 57
+        }
+      ]
+    }
+  ],
+  "tgtDFsMP": [
+    {
+      "ID": "4004001.FORMAT",
+      "Options": [
+        {
+          "key": "jdbc"
+        }
+      ]
+    },
+    {
+      "ID": "4004001.TABLE",
+      "Options": [
+        {
+          "key": "sales_commission_payout"
+        }
+      ]
+    }
+  ],
+  "tgtDFsOptionsMP": [
+    {
+      "ID": "4004001.OPTIONS",
+      "Options": [
+        {
+          "key": "batchsize",
+          "value": 1000
+        },
+        {
+          "key": "mode",
+          "value": "overwrite"
+        }
+      ]
+    }
+  ]
+}

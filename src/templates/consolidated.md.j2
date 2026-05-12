@@ -1,0 +1,43 @@
+# Pipeline Documentation
+
+## Table of Contents
+
+{% for domain, pipelines in grouped_pipelines.items() -%}
+### {{ domain | capitalize }}
+{% for p in pipelines -%}
+{{ loop.index }}. [{{ p.job.job_id }}](#{{ p.job.job_id | lower | replace("_", "-") }})
+{% endfor %}
+{% endfor %}
+
+---
+
+{% for section in pipeline_sections -%}
+{{ section }}
+
+---
+
+{% endfor %}
+
+## Cross-Pipeline Summary
+
+| Metric | Count |
+|--------|-------|
+| Total Pipelines | {{ total_pipelines }} |
+| Total Source Connections | {{ total_connections }} |
+| Total Transformations | {{ total_transformations }} |
+| Total Output Targets | {{ total_outputs }} |
+| Domains | {{ domain_count }} |
+
+{% if cross_pipeline_links -%}
+## Cross-Pipeline Dependencies
+
+| Source Pipeline | Output Table | Target Pipeline |
+|----------------|--------------|-----------------|
+{% for link in cross_pipeline_links -%}
+| {{ link.source_pipeline }} | {{ link.source_output_table }} | {{ link.target_pipeline }} |
+{% endfor %}
+{% endif -%}
+
+{% for domain, warning in domain_warnings.items() -%}
+> **Warning ({{ domain }}):** {{ warning }}
+{% endfor %}

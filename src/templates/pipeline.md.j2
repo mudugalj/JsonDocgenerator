@@ -1,0 +1,175 @@
+## {{ pipeline.job.job_id }}
+
+**Domain:** {{ pipeline.domain or "Unknown" }}
+{% if order_num %}**Execution Order:** {{ order_num }}{% endif %}
+
+### Job Overview
+
+| Parameter | Value |
+|-----------|-------|
+{% for v in pipeline.job.variables -%}
+| {{ v.key }} | {{ v.value }} |
+{% endfor %}
+
+### Connections
+
+| ID | Type | URL |
+|----|------|-----|
+{% for conn in pipeline.connections -%}
+| {{ conn.id }} | {{ conn.database_type.value | capitalize }} | {{ conn.url }} |
+{% endfor %}
+
+### Source Dataframes
+
+{% for src in pipeline.sources -%}
+#### {{ src.id }}
+
+- **Type:** {{ src.source_type.value }}
+- **Connection:** {{ src.connection_id }}
+{% if src.query -%}
+- **Query:**
+```sql
+{{ src.query }}
+```
+{% endif -%}
+{% if src.dbtable -%}
+- **DBTable:** `{{ src.dbtable }}`
+{% endif -%}
+{% if src.path -%}
+- **Path:** `{{ src.path }}`
+{% endif -%}
+{% if src.source_filter -%}
+- **Source Filter:** `{{ src.source_filter }}`
+{% endif %}
+{% endfor %}
+
+### Transformations
+
+{% for df in ordered_derived -%}
+#### {{ df.id }} ({{ df.transformation_type.value }})
+
+{% if df.transformation_type.value == "map" -%}
+**Source:** {{ df.source }}
+
+| # | Column Mapping |
+|---|---------------|
+{% for cm in df.columns -%}
+| {{ loop.index }} | `{{ cm.raw }}` |
+{% endfor %}
+{% if df.src_filter -%}
+**Source Filter:**
+{% for f in df.src_filter -%}
+- `{{ f }}`
+{% endfor %}
+{% endif -%}
+
+{% elif df.transformation_type.value == "join" -%}
+**Join Type:** {{ df.join_type.value if df.join_type else "inner" }}
+**Source A:** {{ df.source_a }}
+**Source B:** {{ df.source_b }}
+
+{% if df.columns -%}
+| # | Column Mapping |
+|---|---------------|
+{% for cm in df.columns -%}
+| {{ loop.index }} | `{{ cm.raw }}` |
+{% endfor %}
+{% endif -%}
+
+{% if df.join_expressions -%}
+**Join Conditions (AND):**
+{% for e in df.join_expressions -%}
+- `{{ e }}`
+{% endfor %}
+{% endif -%}
+{% if df.join_expressions_or -%}
+**Join Conditions (OR):**
+{% for e in df.join_expressions_or -%}
+- `{{ e }}`
+{% endfor %}
+{% endif -%}
+{% if df.src_a_filter -%}
+**Pre-Join Filter (Source A):**
+{% for f in df.src_a_filter -%}
+- `{{ f }}`
+{% endfor %}
+{% endif -%}
+{% if df.src_b_filter -%}
+**Pre-Join Filter (Source B):**
+{% for f in df.src_b_filter -%}
+- `{{ f }}`
+{% endfor %}
+{% endif -%}
+
+{% elif df.transformation_type.value == "union" -%}
+**Source A:** {{ df.source_a }}
+**Source B:** {{ df.source_b }}
+
+{% if df.source_a_columns -%}
+**Source A Columns:**
+{% for cm in df.source_a_columns -%}
+- `{{ cm.raw }}`
+{% endfor %}
+{% endif -%}
+{% if df.source_b_columns -%}
+**Source B Columns:**
+{% for cm in df.source_b_columns -%}
+- `{{ cm.raw }}`
+{% endfor %}
+{% endif -%}
+
+{% elif df.transformation_type.value == "agg" -%}
+**Source:** {{ df.source }}
+
+{% if df.group_by -%}
+**Group By:**
+{% for g in df.group_by -%}
+- `{{ g }}`
+{% endfor %}
+{% endif -%}
+{% if df.aggregations -%}
+**Aggregations:**
+{% for a in df.aggregations -%}
+- `{{ a }}`
+{% endfor %}
+{% endif -%}
+{% if df.sort -%}
+**Sort:**
+{% for s in df.sort -%}
+- `{{ s }}`
+{% endfor %}
+{% endif -%}
+{% endif %}
+{% endfor %}
+
+### Data Lineage
+
+```
+{% for path in lineage_paths -%}
+{{ path | join(" → ") }}
+{% endfor -%}
+```
+
+### Output Targets
+
+| Dataframe | Format | Table/Path | Mode | Batch Size | Connection |
+|-----------|--------|------------|------|------------|------------|
+{% for out in pipeline.outputs -%}
+| {{ out.dataframe_id }} | {{ out.output_format.value }} | {{ out.table_name or out.path or "" }} | {{ out.mode or "" }} | {{ out.batchsize or "" }} | {{ out.connection_id }} |
+{% endfor %}
+{% if multi_output_dfs -%}
+
+> **Note:** The following dataframes write to multiple destinations: {{ multi_output_dfs | join(", ") }}
+{% endif %}
+
+### Variable Usage
+
+| Variable | Default Value | Referenced By |
+|----------|--------------|---------------|
+{% for var_name, refs in var_references.items() -%}
+| {{ var_name }} | {{ var_defaults.get(var_name, "") }} | {{ refs | join(", ") }} |
+{% endfor %}
+{% if unresolved_vars -%}
+
+> **Warning:** Unresolved variable references: {{ unresolved_vars | join(", ") }}
+{% endif %}

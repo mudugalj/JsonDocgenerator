@@ -1,0 +1,469 @@
+{
+  "variablesMP": [
+    {
+      "ID": "SALES_FORECAST_JOB",
+      "Options": [
+        {
+          "key": "forecast_year",
+          "value": 2026
+        },
+        {
+          "key": "forecast_quarter",
+          "value": "Q1"
+        },
+        {
+          "key": "region_filter",
+          "value": "ALL"
+        }
+      ]
+    }
+  ],
+  "connectionDetailsMP": [
+    {
+      "ID": 57,
+      "Options": [
+        {
+          "key": "driver",
+          "value": "oracle.jdbc.OracleDriver"
+        },
+        {
+          "key": "url",
+          "value": "jdbc:oracle:thin:@localhost:1521/XEPDB1"
+        },
+        {
+          "key": "user",
+          "value": "admin"
+        },
+        {
+          "key": "password",
+          "value": "secret"
+        }
+      ]
+    },
+    {
+      "ID": 18,
+      "Options": [
+        {
+          "key": "driver",
+          "value": "org.apache.hive.jdbc.HiveDriver"
+        },
+        {
+          "key": "url",
+          "value": "jdbc:hive2://hive-server:10000/default"
+        },
+        {
+          "key": "user",
+          "value": "hive"
+        },
+        {
+          "key": "password",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "ID": 99,
+      "Options": [
+        {
+          "key": "driver",
+          "value": "com.mysql.cj.jdbc.Driver"
+        },
+        {
+          "key": "url",
+          "value": "jdbc:mysql://mysql-db:3306/products_db"
+        },
+        {
+          "key": "user",
+          "value": "mysqluser"
+        },
+        {
+          "key": "password",
+          "value": "mysqlpass"
+        }
+      ]
+    }
+  ],
+  "srcDFsOptionsMP": [
+    {
+      "ID": "300300301.OPTIONS",
+      "Options": [
+        {
+          "key": "query",
+          "value": "SELECT opportunity_id, rep_id, territory_id, stage, amount, probability, close_date, product_line FROM opportunities WHERE EXTRACT(YEAR FROM close_date) = ${forecast_year} AND stage NOT IN ('LOST', 'DISQUALIFIED')"
+        }
+      ]
+    },
+    {
+      "ID": "300300302.OPTIONS",
+      "Options": [
+        {
+          "key": "query",
+          "value": "SELECT territory_id, territory_name, region, area_manager, quota_amount FROM sales_territories WHERE is_active = 'Y'"
+        }
+      ]
+    },
+    {
+      "ID": "300300303.OPTIONS",
+      "Options": [
+        {
+          "key": "query",
+          "value": "SELECT rep_id, rep_name, hire_date, tier, base_quota FROM sales_reps WHERE status = 'ACTIVE'"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineMappingMP": [
+    {
+      "ID": "oppty_weighted_df",
+      "Options": [
+        {
+          "key": "col(mysql_oppty_df.opportunity_id).alias(opportunity_id)"
+        },
+        {
+          "key": "col(mysql_oppty_df.rep_id).alias(rep_id)"
+        },
+        {
+          "key": "col(mysql_oppty_df.territory_id).alias(territory_id)"
+        },
+        {
+          "key": "col(mysql_oppty_df.product_line).alias(product_line)"
+        },
+        {
+          "key": "expr(mysql_oppty_df.amount * mysql_oppty_df.probability / 100).alias(weighted_amount)"
+        },
+        {
+          "key": "expr(QUARTER(mysql_oppty_df.close_date)).alias(close_quarter)"
+        },
+        {
+          "key": "col(mysql_oppty_df.stage).alias(stage)"
+        }
+      ]
+    },
+    {
+      "ID": "oppty_weighted_df.srcFilter",
+      "Options": [
+        {
+          "key": "expr(mysql_oppty_df.amount > 0)"
+        }
+      ]
+    },
+    {
+      "ID": "oppty_with_territory_df",
+      "Options": [
+        {
+          "key": "col(oppty_weighted_df.opportunity_id).alias(opportunity_id)"
+        },
+        {
+          "key": "col(oppty_weighted_df.rep_id).alias(rep_id)"
+        },
+        {
+          "key": "col(oppty_weighted_df.weighted_amount).alias(weighted_amount)"
+        },
+        {
+          "key": "col(oppty_weighted_df.product_line).alias(product_line)"
+        },
+        {
+          "key": "col(oppty_weighted_df.close_quarter).alias(close_quarter)"
+        },
+        {
+          "key": "col(hive_territory_df.territory_name).alias(territory_name)"
+        },
+        {
+          "key": "col(hive_territory_df.region).alias(region)"
+        },
+        {
+          "key": "col(hive_territory_df.quota_amount).alias(territory_quota)"
+        }
+      ]
+    },
+    {
+      "ID": "oppty_with_territory_df.joinExpression",
+      "Options": [
+        {
+          "key": "expr(oppty_weighted_df.territory_id == hive_territory_df.territory_id)"
+        }
+      ]
+    },
+    {
+      "ID": "oppty_enriched_df",
+      "Options": [
+        {
+          "key": "col(oppty_with_territory_df.opportunity_id).alias(opportunity_id)"
+        },
+        {
+          "key": "col(oppty_with_territory_df.weighted_amount).alias(weighted_amount)"
+        },
+        {
+          "key": "col(oppty_with_territory_df.region).alias(region)"
+        },
+        {
+          "key": "col(oppty_with_territory_df.close_quarter).alias(close_quarter)"
+        },
+        {
+          "key": "col(oppty_with_territory_df.product_line).alias(product_line)"
+        },
+        {
+          "key": "col(oppty_with_territory_df.territory_quota).alias(territory_quota)"
+        },
+        {
+          "key": "col(mysql_reps_df.rep_name).alias(rep_name)"
+        },
+        {
+          "key": "col(mysql_reps_df.tier).alias(rep_tier)"
+        }
+      ]
+    },
+    {
+      "ID": "oppty_enriched_df.joinExpression",
+      "Options": [
+        {
+          "key": "expr(oppty_with_territory_df.rep_id == mysql_reps_df.rep_id)"
+        }
+      ]
+    },
+    {
+      "ID": "forecast_summary_df.groupBy",
+      "Options": [
+        {
+          "key": "col(region)"
+        },
+        {
+          "key": "col(close_quarter)"
+        },
+        {
+          "key": "col(product_line)"
+        }
+      ]
+    },
+    {
+      "ID": "forecast_summary_df.agg",
+      "Options": [
+        {
+          "key": "expr(SUM(weighted_amount)).alias(total_weighted_pipeline)"
+        },
+        {
+          "key": "expr(COUNT(opportunity_id)).alias(opportunity_count)"
+        },
+        {
+          "key": "expr(AVG(weighted_amount)).alias(avg_deal_size)"
+        },
+        {
+          "key": "expr(MAX(territory_quota)).alias(max_territory_quota)"
+        }
+      ]
+    },
+    {
+      "ID": "forecast_summary_df.sort",
+      "Options": [
+        {
+          "key": "col(region)"
+        },
+        {
+          "key": "col(close_quarter)"
+        },
+        {
+          "key": "col(total_weighted_pipeline).desc()"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineMapSrcMap": [
+    {
+      "ID": "oppty_weighted_df",
+      "Options": [
+        {
+          "key": "source",
+          "value": "mysql_oppty_df"
+        }
+      ]
+    },
+    {
+      "ID": "forecast_summary_df",
+      "Options": [
+        {
+          "key": "source",
+          "value": "oppty_enriched_df"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineJoiSrcMap": [
+    {
+      "ID": "oppty_with_territory_df",
+      "Options": [
+        {
+          "key": "joinType",
+          "value": "inner"
+        },
+        {
+          "key": "sourceA",
+          "value": "oppty_weighted_df"
+        },
+        {
+          "key": "sourceB",
+          "value": "hive_territory_df"
+        }
+      ]
+    },
+    {
+      "ID": "oppty_enriched_df",
+      "Options": [
+        {
+          "key": "joinType",
+          "value": "left"
+        },
+        {
+          "key": "sourceA",
+          "value": "oppty_with_territory_df"
+        },
+        {
+          "key": "sourceB",
+          "value": "mysql_reps_df"
+        }
+      ]
+    }
+  ],
+  "sourceDfPipeline": [
+    {
+      "ID": "mysql_oppty_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "connection",
+          "value": 99
+        },
+        {
+          "key": "source",
+          "value": 300300301
+        }
+      ]
+    },
+    {
+      "ID": "hive_territory_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "hive"
+        },
+        {
+          "key": "connection",
+          "value": 18
+        },
+        {
+          "key": "source",
+          "value": 300300302
+        }
+      ]
+    },
+    {
+      "ID": "mysql_reps_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "connection",
+          "value": 99
+        },
+        {
+          "key": "source",
+          "value": 300300303
+        }
+      ]
+    }
+  ],
+  "derivedDfPipeline": [
+    {
+      "ID": "oppty_weighted_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "map"
+        }
+      ]
+    },
+    {
+      "ID": "oppty_with_territory_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "join"
+        }
+      ]
+    },
+    {
+      "ID": "oppty_enriched_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "join"
+        }
+      ]
+    },
+    {
+      "ID": "forecast_summary_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "agg"
+        }
+      ]
+    }
+  ],
+  "outputDfPipeline": [
+    {
+      "ID": "forecast_summary_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "target",
+          "value": 4003001
+        },
+        {
+          "key": "connection",
+          "value": 57
+        }
+      ]
+    }
+  ],
+  "tgtDFsMP": [
+    {
+      "ID": "4003001.FORMAT",
+      "Options": [
+        {
+          "key": "jdbc"
+        }
+      ]
+    },
+    {
+      "ID": "4003001.TABLE",
+      "Options": [
+        {
+          "key": "sales_forecast_summary"
+        }
+      ]
+    }
+  ],
+  "tgtDFsOptionsMP": [
+    {
+      "ID": "4003001.OPTIONS",
+      "Options": [
+        {
+          "key": "batchsize",
+          "value": 5000
+        },
+        {
+          "key": "mode",
+          "value": "overwrite"
+        }
+      ]
+    }
+  ]
+}

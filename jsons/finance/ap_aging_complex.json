@@ -1,0 +1,382 @@
+{
+  "variablesMP": [
+    {
+      "ID": "AP_AGING_REPORT_JOB",
+      "Options": [
+        {
+          "key": "report_date",
+          "value": "2025-12-31"
+        },
+        {
+          "key": "company_code",
+          "value": "US01"
+        },
+        {
+          "key": "currency",
+          "value": "USD"
+        }
+      ]
+    }
+  ],
+  "connectionDetailsMP": [
+    {
+      "ID": 57,
+      "Options": [
+        {
+          "key": "driver",
+          "value": "oracle.jdbc.OracleDriver"
+        },
+        {
+          "key": "url",
+          "value": "jdbc:oracle:thin:@localhost:1521/XEPDB1"
+        },
+        {
+          "key": "user",
+          "value": "admin"
+        },
+        {
+          "key": "password",
+          "value": "secret"
+        }
+      ]
+    },
+    {
+      "ID": 99,
+      "Options": [
+        {
+          "key": "driver",
+          "value": "com.mysql.cj.jdbc.Driver"
+        },
+        {
+          "key": "url",
+          "value": "jdbc:mysql://mysql-db:3306/products_db"
+        },
+        {
+          "key": "user",
+          "value": "mysqluser"
+        },
+        {
+          "key": "password",
+          "value": "mysqlpass"
+        }
+      ]
+    }
+  ],
+  "srcDFsOptionsMP": [
+    {
+      "ID": "200200201.OPTIONS",
+      "Options": [
+        {
+          "key": "query",
+          "value": "SELECT invoice_id, vendor_id, invoice_date, due_date, invoice_amount, paid_amount, status, company_code FROM ap_invoices WHERE company_code = '${company_code}' AND status != 'CANCELLED'"
+        }
+      ]
+    },
+    {
+      "ID": "200200202.OPTIONS",
+      "Options": [
+        {
+          "key": "query",
+          "value": "SELECT vendor_id, vendor_name, payment_terms, vendor_type, credit_limit, is_active FROM vendors WHERE is_active = 1"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineMappingMP": [
+    {
+      "ID": "invoice_base_df",
+      "Options": [
+        {
+          "key": "col(oracle_invoices_df.invoice_id).alias(invoice_id)"
+        },
+        {
+          "key": "col(oracle_invoices_df.vendor_id).alias(vendor_id)"
+        },
+        {
+          "key": "col(oracle_invoices_df.invoice_date).alias(invoice_date)"
+        },
+        {
+          "key": "col(oracle_invoices_df.due_date).alias(due_date)"
+        },
+        {
+          "key": "expr(oracle_invoices_df.invoice_amount - oracle_invoices_df.paid_amount).alias(outstanding_amount)"
+        },
+        {
+          "key": "expr(DATEDIFF('${report_date}', oracle_invoices_df.due_date)).alias(days_past_due)"
+        }
+      ]
+    },
+    {
+      "ID": "invoice_base_df.srcFilter",
+      "Options": [
+        {
+          "key": "expr(oracle_invoices_df.invoice_amount > oracle_invoices_df.paid_amount)"
+        }
+      ]
+    },
+    {
+      "ID": "vendor_map_df",
+      "Options": [
+        {
+          "key": "col(mysql_vendors_df.vendor_id).alias(vendor_id)"
+        },
+        {
+          "key": "col(mysql_vendors_df.vendor_name).alias(vendor_name)"
+        },
+        {
+          "key": "col(mysql_vendors_df.payment_terms).alias(payment_terms)"
+        },
+        {
+          "key": "col(mysql_vendors_df.vendor_type).alias(vendor_type)"
+        }
+      ]
+    },
+    {
+      "ID": "ap_with_vendor_df",
+      "Options": [
+        {
+          "key": "col(invoice_base_df.invoice_id).alias(invoice_id)"
+        },
+        {
+          "key": "col(invoice_base_df.outstanding_amount).alias(outstanding_amount)"
+        },
+        {
+          "key": "col(invoice_base_df.days_past_due).alias(days_past_due)"
+        },
+        {
+          "key": "col(vendor_map_df.vendor_name).alias(vendor_name)"
+        },
+        {
+          "key": "col(vendor_map_df.vendor_type).alias(vendor_type)"
+        },
+        {
+          "key": "expr(CASE WHEN invoice_base_df.days_past_due <= 0 THEN 'CURRENT' WHEN invoice_base_df.days_past_due <= 30 THEN '1-30' WHEN invoice_base_df.days_past_due <= 60 THEN '31-60' WHEN invoice_base_df.days_past_due <= 90 THEN '61-90' ELSE '90+' END).alias(aging_bucket)"
+        }
+      ]
+    },
+    {
+      "ID": "ap_with_vendor_df.joinExpression",
+      "Options": [
+        {
+          "key": "expr(invoice_base_df.vendor_id == vendor_map_df.vendor_id)"
+        }
+      ]
+    },
+    {
+      "ID": "ap_aging_summary_df.groupBy",
+      "Options": [
+        {
+          "key": "col(vendor_name)"
+        },
+        {
+          "key": "col(vendor_type)"
+        },
+        {
+          "key": "col(aging_bucket)"
+        }
+      ]
+    },
+    {
+      "ID": "ap_aging_summary_df.agg",
+      "Options": [
+        {
+          "key": "expr(SUM(outstanding_amount)).alias(total_outstanding)"
+        },
+        {
+          "key": "expr(COUNT(invoice_id)).alias(invoice_count)"
+        },
+        {
+          "key": "expr(AVG(outstanding_amount)).alias(avg_invoice_amount)"
+        },
+        {
+          "key": "expr(MAX(days_past_due)).alias(max_days_overdue)"
+        }
+      ]
+    },
+    {
+      "ID": "ap_aging_summary_df.sort",
+      "Options": [
+        {
+          "key": "col(vendor_name)"
+        },
+        {
+          "key": "col(aging_bucket)"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineMapSrcMap": [
+    {
+      "ID": "invoice_base_df",
+      "Options": [
+        {
+          "key": "source",
+          "value": "oracle_invoices_df"
+        }
+      ]
+    },
+    {
+      "ID": "vendor_map_df",
+      "Options": [
+        {
+          "key": "source",
+          "value": "mysql_vendors_df"
+        }
+      ]
+    },
+    {
+      "ID": "ap_aging_summary_df",
+      "Options": [
+        {
+          "key": "source",
+          "value": "ap_with_vendor_df"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineJoiSrcMap": [
+    {
+      "ID": "ap_with_vendor_df",
+      "Options": [
+        {
+          "key": "joinType",
+          "value": "inner"
+        },
+        {
+          "key": "sourceA",
+          "value": "invoice_base_df"
+        },
+        {
+          "key": "sourceB",
+          "value": "vendor_map_df"
+        }
+      ]
+    }
+  ],
+  "sourceDfPipeline": [
+    {
+      "ID": "oracle_invoices_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "connection",
+          "value": 57
+        },
+        {
+          "key": "source",
+          "value": 200200201
+        }
+      ]
+    },
+    {
+      "ID": "mysql_vendors_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "connection",
+          "value": 99
+        },
+        {
+          "key": "source",
+          "value": 200200202
+        }
+      ]
+    }
+  ],
+  "derivedDfPipeline": [
+    {
+      "ID": "invoice_base_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "map"
+        }
+      ]
+    },
+    {
+      "ID": "vendor_map_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "map"
+        }
+      ]
+    },
+    {
+      "ID": "ap_with_vendor_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "join"
+        }
+      ]
+    },
+    {
+      "ID": "ap_aging_summary_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "agg"
+        }
+      ]
+    }
+  ],
+  "outputDfPipeline": [
+    {
+      "ID": "ap_aging_summary_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "target",
+          "value": 4002001
+        },
+        {
+          "key": "connection",
+          "value": 57
+        }
+      ]
+    }
+  ],
+  "tgtDFsMP": [
+    {
+      "ID": "4002001.FORMAT",
+      "Options": [
+        {
+          "key": "jdbc"
+        }
+      ]
+    },
+    {
+      "ID": "4002001.TABLE",
+      "Options": [
+        {
+          "key": "ap_aging_report"
+        }
+      ]
+    }
+  ],
+  "tgtDFsOptionsMP": [
+    {
+      "ID": "4002001.OPTIONS",
+      "Options": [
+        {
+          "key": "batchsize",
+          "value": 3000
+        },
+        {
+          "key": "mode",
+          "value": "overwrite"
+        }
+      ]
+    }
+  ]
+}

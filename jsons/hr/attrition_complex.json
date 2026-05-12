@@ -1,0 +1,500 @@
+{
+  "variablesMP": [
+    {
+      "ID": "HR_ATTRITION_JOB",
+      "Options": [
+        {
+          "key": "analysis_year",
+          "value": 2025
+        },
+        {
+          "key": "analysis_quarter",
+          "value": "Q4"
+        },
+        {
+          "key": "min_survey_responses",
+          "value": 10
+        }
+      ]
+    }
+  ],
+  "connectionDetailsMP": [
+    {
+      "ID": 57,
+      "Options": [
+        {
+          "key": "driver",
+          "value": "oracle.jdbc.OracleDriver"
+        },
+        {
+          "key": "url",
+          "value": "jdbc:oracle:thin:@localhost:1521/XEPDB1"
+        },
+        {
+          "key": "user",
+          "value": "admin"
+        },
+        {
+          "key": "password",
+          "value": "secret"
+        }
+      ]
+    },
+    {
+      "ID": 99,
+      "Options": [
+        {
+          "key": "driver",
+          "value": "com.mysql.cj.jdbc.Driver"
+        },
+        {
+          "key": "url",
+          "value": "jdbc:mysql://mysql-db:3306/products_db"
+        },
+        {
+          "key": "user",
+          "value": "mysqluser"
+        },
+        {
+          "key": "password",
+          "value": "mysqlpass"
+        }
+      ]
+    }
+  ],
+  "srcDFsOptionsMP": [
+    {
+      "ID": "600600601.OPTIONS",
+      "Options": [
+        {
+          "key": "query",
+          "value": "SELECT employee_id, department_id, job_level, termination_date, termination_reason, tenure_months, last_rating, salary_band FROM terminations WHERE EXTRACT(YEAR FROM termination_date) = ${analysis_year}"
+        }
+      ]
+    },
+    {
+      "ID": "600600602.OPTIONS",
+      "Options": [
+        {
+          "key": "query",
+          "value": "SELECT employee_id, department_id, engagement_score, manager_score, work_life_score, growth_score, survey_date FROM engagement_surveys WHERE EXTRACT(YEAR FROM survey_date) = ${analysis_year}"
+        }
+      ]
+    },
+    {
+      "ID": "600600603.OPTIONS",
+      "Options": [
+        {
+          "key": "query",
+          "value": "SELECT employee_id, department_id, job_level, hire_date, salary_band, last_rating, status FROM employees WHERE status = 'ACTIVE'"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineMappingMP": [
+    {
+      "ID": "term_mapped_df",
+      "Options": [
+        {
+          "key": "col(oracle_term_df.employee_id).alias(employee_id)"
+        },
+        {
+          "key": "col(oracle_term_df.department_id).alias(department_id)"
+        },
+        {
+          "key": "col(oracle_term_df.job_level).alias(job_level)"
+        },
+        {
+          "key": "col(oracle_term_df.termination_reason).alias(termination_reason)"
+        },
+        {
+          "key": "col(oracle_term_df.tenure_months).alias(tenure_months)"
+        },
+        {
+          "key": "col(oracle_term_df.last_rating).alias(last_rating)"
+        },
+        {
+          "key": "expr(LITERAL(TERMINATED)).alias(emp_status)"
+        }
+      ]
+    },
+    {
+      "ID": "active_mapped_df",
+      "Options": [
+        {
+          "key": "col(oracle_active_df.employee_id).alias(employee_id)"
+        },
+        {
+          "key": "col(oracle_active_df.department_id).alias(department_id)"
+        },
+        {
+          "key": "col(oracle_active_df.job_level).alias(job_level)"
+        },
+        {
+          "key": "expr(LITERAL(N/A)).alias(termination_reason)"
+        },
+        {
+          "key": "expr(DATEDIFF('${analysis_year}-12-31', oracle_active_df.hire_date) / 30).alias(tenure_months)"
+        },
+        {
+          "key": "col(oracle_active_df.last_rating).alias(last_rating)"
+        },
+        {
+          "key": "expr(LITERAL(ACTIVE)).alias(emp_status)"
+        }
+      ]
+    },
+    {
+      "ID": "combined_emp_df",
+      "Options": []
+    },
+    {
+      "ID": "combined_emp_df.sourceA",
+      "Options": [
+        {
+          "key": "col(term_mapped_df.employee_id).alias(employee_id)"
+        },
+        {
+          "key": "col(term_mapped_df.department_id).alias(department_id)"
+        },
+        {
+          "key": "col(term_mapped_df.job_level).alias(job_level)"
+        },
+        {
+          "key": "col(term_mapped_df.tenure_months).alias(tenure_months)"
+        },
+        {
+          "key": "col(term_mapped_df.last_rating).alias(last_rating)"
+        },
+        {
+          "key": "col(term_mapped_df.emp_status).alias(emp_status)"
+        }
+      ]
+    },
+    {
+      "ID": "combined_emp_df.sourceB",
+      "Options": [
+        {
+          "key": "col(active_mapped_df.employee_id).alias(employee_id)"
+        },
+        {
+          "key": "col(active_mapped_df.department_id).alias(department_id)"
+        },
+        {
+          "key": "col(active_mapped_df.job_level).alias(job_level)"
+        },
+        {
+          "key": "col(active_mapped_df.tenure_months).alias(tenure_months)"
+        },
+        {
+          "key": "col(active_mapped_df.last_rating).alias(last_rating)"
+        },
+        {
+          "key": "col(active_mapped_df.emp_status).alias(emp_status)"
+        }
+      ]
+    },
+    {
+      "ID": "emp_with_survey_df",
+      "Options": [
+        {
+          "key": "col(combined_emp_df.employee_id).alias(employee_id)"
+        },
+        {
+          "key": "col(combined_emp_df.department_id).alias(department_id)"
+        },
+        {
+          "key": "col(combined_emp_df.job_level).alias(job_level)"
+        },
+        {
+          "key": "col(combined_emp_df.tenure_months).alias(tenure_months)"
+        },
+        {
+          "key": "col(combined_emp_df.last_rating).alias(last_rating)"
+        },
+        {
+          "key": "col(combined_emp_df.emp_status).alias(emp_status)"
+        },
+        {
+          "key": "col(mysql_survey_df.engagement_score).alias(engagement_score)"
+        },
+        {
+          "key": "col(mysql_survey_df.manager_score).alias(manager_score)"
+        },
+        {
+          "key": "col(mysql_survey_df.work_life_score).alias(work_life_score)"
+        }
+      ]
+    },
+    {
+      "ID": "emp_with_survey_df.joinExpression",
+      "Options": [
+        {
+          "key": "expr(combined_emp_df.employee_id == mysql_survey_df.employee_id)"
+        }
+      ]
+    },
+    {
+      "ID": "attrition_metrics_df.groupBy",
+      "Options": [
+        {
+          "key": "col(department_id)"
+        },
+        {
+          "key": "col(job_level)"
+        }
+      ]
+    },
+    {
+      "ID": "attrition_metrics_df.agg",
+      "Options": [
+        {
+          "key": "expr(COUNT(employee_id)).alias(total_employees)"
+        },
+        {
+          "key": "expr(SUM(CASE WHEN emp_status == 'TERMINATED' THEN 1 ELSE 0 END)).alias(termination_count)"
+        },
+        {
+          "key": "expr(AVG(engagement_score)).alias(avg_engagement)"
+        },
+        {
+          "key": "expr(AVG(manager_score)).alias(avg_manager_score)"
+        },
+        {
+          "key": "expr(AVG(tenure_months)).alias(avg_tenure_months)"
+        },
+        {
+          "key": "expr(SUM(CASE WHEN emp_status == 'TERMINATED' THEN 1 ELSE 0 END) * 100.0 / COUNT(employee_id)).alias(attrition_rate)"
+        }
+      ]
+    },
+    {
+      "ID": "attrition_metrics_df.sort",
+      "Options": [
+        {
+          "key": "col(attrition_rate).desc()"
+        },
+        {
+          "key": "col(department_id)"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineMapSrcMap": [
+    {
+      "ID": "term_mapped_df",
+      "Options": [
+        {
+          "key": "source",
+          "value": "oracle_term_df"
+        }
+      ]
+    },
+    {
+      "ID": "active_mapped_df",
+      "Options": [
+        {
+          "key": "source",
+          "value": "oracle_active_df"
+        }
+      ]
+    },
+    {
+      "ID": "attrition_metrics_df",
+      "Options": [
+        {
+          "key": "source",
+          "value": "emp_with_survey_df"
+        }
+      ]
+    }
+  ],
+  "derivedDfPipelineJoiSrcMap": [
+    {
+      "ID": "combined_emp_df",
+      "Options": [
+        {
+          "key": "joinType",
+          "value": "union"
+        },
+        {
+          "key": "sourceA",
+          "value": "term_mapped_df"
+        },
+        {
+          "key": "sourceB",
+          "value": "active_mapped_df"
+        }
+      ]
+    },
+    {
+      "ID": "emp_with_survey_df",
+      "Options": [
+        {
+          "key": "joinType",
+          "value": "left"
+        },
+        {
+          "key": "sourceA",
+          "value": "combined_emp_df"
+        },
+        {
+          "key": "sourceB",
+          "value": "mysql_survey_df"
+        }
+      ]
+    }
+  ],
+  "sourceDfPipeline": [
+    {
+      "ID": "oracle_term_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "connection",
+          "value": 57
+        },
+        {
+          "key": "source",
+          "value": 600600601
+        }
+      ]
+    },
+    {
+      "ID": "mysql_survey_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "connection",
+          "value": 99
+        },
+        {
+          "key": "source",
+          "value": 600600602
+        }
+      ]
+    },
+    {
+      "ID": "oracle_active_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "connection",
+          "value": 57
+        },
+        {
+          "key": "source",
+          "value": 600600603
+        }
+      ]
+    }
+  ],
+  "derivedDfPipeline": [
+    {
+      "ID": "term_mapped_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "map"
+        }
+      ]
+    },
+    {
+      "ID": "active_mapped_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "map"
+        }
+      ]
+    },
+    {
+      "ID": "combined_emp_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "union"
+        }
+      ]
+    },
+    {
+      "ID": "emp_with_survey_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "join"
+        }
+      ]
+    },
+    {
+      "ID": "attrition_metrics_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "agg"
+        }
+      ]
+    }
+  ],
+  "outputDfPipeline": [
+    {
+      "ID": "attrition_metrics_df",
+      "Options": [
+        {
+          "key": "type",
+          "value": "jdbc"
+        },
+        {
+          "key": "target",
+          "value": 4006001
+        },
+        {
+          "key": "connection",
+          "value": 57
+        }
+      ]
+    }
+  ],
+  "tgtDFsMP": [
+    {
+      "ID": "4006001.FORMAT",
+      "Options": [
+        {
+          "key": "jdbc"
+        }
+      ]
+    },
+    {
+      "ID": "4006001.TABLE",
+      "Options": [
+        {
+          "key": "hr_attrition_metrics"
+        }
+      ]
+    }
+  ],
+  "tgtDFsOptionsMP": [
+    {
+      "ID": "4006001.OPTIONS",
+      "Options": [
+        {
+          "key": "batchsize",
+          "value": 1000
+        },
+        {
+          "key": "mode",
+          "value": "overwrite"
+        }
+      ]
+    }
+  ]
+}

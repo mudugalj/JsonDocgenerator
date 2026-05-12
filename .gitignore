@@ -7,5 +7,6 @@ dist/
 build/
 .env
 .pat
+push.sh
 venv/
 .venv/

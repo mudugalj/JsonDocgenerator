@@ -2,6 +2,7 @@
 
 **Domain:** {{ pipeline.domain or "Unknown" }}
 {% if order_num %}**Execution Order:** {{ order_num }}{% endif %}
+**Mode:** Compressed ({{ pipeline.derived | length }} transformations, {{ pipeline.sources | length }} sources)
 
 ### Job Overview
 
@@ -21,125 +22,60 @@
 
 ### Source Dataframes
 
+| Source ID | Type | Connection | Query/Path Summary |
+|-----------|------|------------|-------------------|
 {% for src in pipeline.sources -%}
-#### {{ src.id }}
-
-- **Type:** {{ src.source_type.value }}
-- **Connection:** {{ src.connection_id }}
-{% if src.query -%}
-- **Query:**
-```sql
-{{ src.query }}
-```
-{% endif -%}
-{% if src.dbtable -%}
-- **DBTable:** `{{ src.dbtable }}`
-{% endif -%}
-{% if src.path -%}
-- **Path:** `{{ src.path }}`
-{% endif -%}
-{% if src.source_filter -%}
-- **Source Filter:** `{{ src.source_filter }}`
-{% endif %}
+| {{ src.id }} | {{ src.source_type.value }} | {{ src.connection_id }} | {{ (src.query or src.dbtable or src.path or "")[:80] }}{% if (src.query or src.dbtable or src.path or "") | length > 80 %}...{% endif %} |
 {% endfor %}
 
-### Transformations
+### Pipeline Flow (Core Logic)
+
+| Step | Dataframe | Type | Source(s) | Columns | Key Logic |
+|------|-----------|------|-----------|---------|-----------|
+{% for df in ordered_derived -%}
+| {{ loop.index }} | {{ df.id }} | {{ df.transformation_type.value }} | {% if df.transformation_type.value in ["join", "union"] %}{{ df.source_a }} ⟕ {{ df.source_b }}{% else %}{{ df.source or "" }}{% endif %} | {{ df.columns | length }}{% if df.source_a_columns %} (A:{{ df.source_a_columns | length }}, B:{{ df.source_b_columns | length }}){% endif %} | {% if df.transformation_type.value == "join" %}{{ df.join_type.value if df.join_type else "inner" }} on {{ df.join_expressions | length }} condition(s){% elif df.transformation_type.value == "agg" %}GROUP BY {{ df.group_by | length }} cols, {{ df.aggregations | length }} aggs{% elif df.src_filter %}filter: {{ df.src_filter[0][:50] }}{% elif df.transformation_type.value == "union" %}UNION ALL{% else %}map {{ df.columns | length }} cols{% endif %} |
+{% endfor %}
+
+### Key Transformations Detail
 
 {% for df in ordered_derived -%}
+{% if df.src_filter or df.src_a_filter or df.src_b_filter or df.join_expressions or df.aggregations -%}
 #### {{ df.id }} ({{ df.transformation_type.value }})
 
-{% if df.transformation_type.value == "map" -%}
-**Source:** {{ df.source }}
-
-| # | Column Mapping |
-|---|---------------|
-{% for cm in df.columns -%}
-| {{ loop.index }} | `{{ cm.raw }}` |
-{% endfor %}
-{% if df.src_filter -%}
-**Source Filter:**
-{% for f in df.src_filter -%}
-- `{{ f }}`
-{% endfor %}
-{% endif -%}
-
-{% elif df.transformation_type.value == "join" -%}
-**Join Type:** {{ df.join_type.value if df.join_type else "inner" }}
-**Source A:** {{ df.source_a }}
-**Source B:** {{ df.source_b }}
-
-{% if df.columns -%}
-| # | Column Mapping |
-|---|---------------|
-{% for cm in df.columns -%}
-| {{ loop.index }} | `{{ cm.raw }}` |
-{% endfor %}
-{% endif -%}
-
-{% if df.join_expressions -%}
-**Join Conditions (AND):**
+{% if df.transformation_type.value == "join" -%}
+- **Join:** {{ df.join_type.value if df.join_type else "inner" }} — {{ df.source_a }} ⟕ {{ df.source_b }}
 {% for e in df.join_expressions -%}
-- `{{ e }}`
+- **Condition:** `{{ e }}`
 {% endfor %}
-{% endif -%}
-{% if df.join_expressions_or -%}
-**Join Conditions (OR):**
 {% for e in df.join_expressions_or -%}
-- `{{ e }}`
+- **OR Condition:** `{{ e }}`
 {% endfor %}
-{% endif -%}
 {% if df.src_a_filter -%}
-**Pre-Join Filter (Source A):**
-{% for f in df.src_a_filter -%}
-- `{{ f }}`
-{% endfor %}
+- **Pre-filter A:** `{{ df.src_a_filter[0] }}`
 {% endif -%}
 {% if df.src_b_filter -%}
-**Pre-Join Filter (Source B):**
-{% for f in df.src_b_filter -%}
-- `{{ f }}`
-{% endfor %}
+- **Pre-filter B:** `{{ df.src_b_filter[0] }}`
+{% endif -%}
 {% endif -%}
 
-{% elif df.transformation_type.value == "union" -%}
-**Source A:** {{ df.source_a }}
-**Source B:** {{ df.source_b }}
-
-{% if df.source_a_columns -%}
-**Source A Columns:**
-{% for cm in df.source_a_columns -%}
-- `{{ cm.raw }}`
-{% endfor %}
-{% endif -%}
-{% if df.source_b_columns -%}
-**Source B Columns:**
-{% for cm in df.source_b_columns -%}
-- `{{ cm.raw }}`
-{% endfor %}
+{% if df.transformation_type.value == "map" and df.src_filter -%}
+- **Source:** {{ df.source }}
+- **Filter:** `{{ df.src_filter[0] }}`
 {% endif -%}
 
-{% elif df.transformation_type.value == "agg" -%}
-**Source:** {{ df.source }}
-
-{% if df.group_by -%}
-**Group By:**
-{% for g in df.group_by -%}
-- `{{ g }}`
-{% endfor %}
-{% endif -%}
-{% if df.aggregations -%}
-**Aggregations:**
+{% if df.transformation_type.value == "agg" -%}
+- **Source:** {{ df.source }}
+- **Group By:** {{ df.group_by | join(", ") }}
+- **Aggregations:**
 {% for a in df.aggregations -%}
-- `{{ a }}`
+  - `{{ a }}`
 {% endfor %}
-{% endif -%}
 {% if df.sort -%}
-**Sort:**
-{% for s in df.sort -%}
-- `{{ s }}`
-{% endfor %}
+- **Sort:** {{ df.sort | join(", ") }}
 {% endif -%}
-{% endif %}
+{% endif -%}
+
+{% endif -%}
 {% endfor %}
 
 ### Data Lineage

@@ -5,6 +5,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
+from src.analyzer import analyze_pipeline, is_large_pipeline
 from src.lineage import resolve_cross_pipeline_lineage, resolve_lineage
 from src.models import PipelineModel
 from src.variable_resolver import find_unresolved_variables, find_variable_references
@@ -33,7 +34,11 @@ def generate_single_pipeline(
 ) -> str:
     """Generate Markdown documentation for a single pipeline."""
     env = _get_env()
-    template = env.get_template("pipeline.md.j2")
+
+    # Determine if we should use compressed output
+    compressed = is_large_pipeline(model)
+    template_name = "pipeline_compressed.md.j2" if compressed else "pipeline.md.j2"
+    template = env.get_template(template_name)
 
     # Resolve lineage
     dag = resolve_lineage(model)
@@ -65,6 +70,9 @@ def generate_single_pipeline(
     # Multi-output detection
     multi_output_dfs = _get_multi_output_dfs(model)
 
+    # Analyze for recommendations
+    recommendations = analyze_pipeline(model)
+
     return template.render(
         pipeline=model,
         order_num=order_num,
@@ -74,6 +82,8 @@ def generate_single_pipeline(
         var_defaults=var_defaults,
         unresolved_vars=unresolved,
         multi_output_dfs=multi_output_dfs,
+        recommendations=recommendations,
+        compressed=compressed,
     )
 
 

@@ -283,6 +283,107 @@ def _extract_domain(filename: str) -> str | None:
     return None
 
 
+# --- Spark DAG Endpoints ---
+
+from src.spark_dag_generator import generate_spark_dag
+from src.spark_dag_serializer import serialize_dag
+from src.spark_dag_renderer import render_markdown_report
+
+_spark_dag_result: dict = {}
+
+
+@app.route("/spark-dag", methods=["GET", "POST"])
+def spark_dag_endpoint():
+    if request.method == "GET":
+        return render_template_string("""
+        <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Spark DAG</title>
+        <style>body{font-family:system-ui,sans-serif;max-width:800px;margin:2rem auto;padding:0 1rem;}
+        .btn{background:#2563eb;color:white;padding:0.5rem 1.5rem;border:none;border-radius:4px;cursor:pointer;display:inline-block;text-decoration:none;}
+        .upload-form{border:2px dashed #ccc;padding:2rem;border-radius:8px;}
+        .success{color:#16a34a;background:#f0fdf4;padding:1rem;border-radius:4px;margin:1rem 0;}</style></head>
+        <body><h1>Spark DAG Generator</h1>
+        <p>Upload optimized pipeline JSONs to generate the Spark execution DAG.</p>
+        <form class="upload-form" method="POST" enctype="multipart/form-data">
+        <input type="file" name="files" multiple accept=".json"><br><br>
+        <button type="submit" class="btn">Generate Spark DAG</button></form>
+        {% if success %}<div class="success"><strong>DAG generated!</strong> {{ node_count }} nodes, {{ edge_count }} edges.
+        <br><br><a href="/spark-dag/download/json" class="btn">Download JSON</a>
+        <a href="/spark-dag/download/markdown" class="btn">Download Markdown</a></div>{% endif %}
+        </body></html>
+        """, success=False, node_count=0, edge_count=0)
+
+    files = request.files.getlist("files")
+    if not files or all(f.filename == "" for f in files):
+        return "No files provided", 400
+
+    parsed_models = []
+    for file in files:
+        filename = file.filename or ""
+        if not validate_extension(filename):
+            continue
+        try:
+            data = json.loads(file.read().decode("utf-8"))
+        except Exception:
+            continue
+        schema_errors = validate_schema(data, filename)
+        if schema_errors:
+            continue
+        domain = _extract_domain(filename)
+        model = parse_pipeline(data, filename=filename, domain=domain)
+        parsed_models.append(model)
+
+    if not parsed_models:
+        return "No valid files", 400
+
+    # Optimize then generate DAG
+    opt_result = optimize(parsed_models)
+    dags = [generate_spark_dag(m) for m in opt_result.optimized_models]
+    _spark_dag_result["dags"] = dags
+
+    total_nodes = sum(len(d.nodes) for d in dags)
+    total_edges = sum(len(d.edges) for d in dags)
+
+    return render_template_string("""
+    <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Spark DAG</title>
+    <style>body{font-family:system-ui,sans-serif;max-width:800px;margin:2rem auto;padding:0 1rem;}
+    .btn{background:#2563eb;color:white;padding:0.5rem 1.5rem;border:none;border-radius:4px;cursor:pointer;display:inline-block;text-decoration:none;}
+    .success{color:#16a34a;background:#f0fdf4;padding:1rem;border-radius:4px;margin:1rem 0;}</style></head>
+    <body><h1>Spark DAG Generator</h1>
+    {% if success %}<div class="success"><strong>DAG generated!</strong> {{ node_count }} nodes, {{ edge_count }} edges across {{ dag_count }} pipeline(s).
+    <br><br><a href="/spark-dag/download/json" class="btn">Download JSON</a>
+    <a href="/spark-dag/download/markdown" class="btn">Download Markdown</a></div>{% endif %}
+    </body></html>
+    """, success=True, node_count=total_nodes, edge_count=total_edges, dag_count=len(dags))
+
+
+@app.route("/spark-dag/download/json", methods=["GET"])
+def spark_dag_download_json():
+    dags = _spark_dag_result.get("dags")
+    if not dags:
+        return "No DAG generated yet.", 404
+    serialized = [serialize_dag(d) for d in dags]
+    output = serialized[0] if len(serialized) == 1 else {"pipelines": serialized}
+    return Response(
+        json.dumps(output, indent=2),
+        mimetype="application/json",
+        headers={"Content-Disposition": "attachment; filename=spark_dag.json"},
+    )
+
+
+@app.route("/spark-dag/download/markdown", methods=["GET"])
+def spark_dag_download_md():
+    dags = _spark_dag_result.get("dags")
+    if not dags:
+        return "No DAG generated yet.", 404
+    reports = [render_markdown_report(d) for d in dags]
+    full_md = "\n\n---\n\n".join(reports)
+    return Response(
+        full_md,
+        mimetype="text/markdown",
+        headers={"Content-Disposition": "attachment; filename=spark_dag_report.md"},
+    )
+
+
 # --- Optimizer Endpoints ---
 
 from src.optimizer import optimize, generate_system_flow_mermaid, generate_pipeline_lineage_mermaid, print_pipeline

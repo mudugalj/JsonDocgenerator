@@ -136,3 +136,26 @@ This feature generates a structured Spark DAG (Directed Acyclic Graph) from an o
 1. THE DAG_Generator SHALL produce a Markdown document containing a title, the Mermaid flowchart diagram, the topological execution order as a numbered list, and a details section for each node
 2. THE Markdown document SHALL include a node details table listing each node's identifier, operation type, and key metadata summary
 3. THE Markdown document SHALL include the level-based grouping showing which nodes can execute in parallel
+
+### Requirement 11: File Sequencing and Cross-Pipeline DAG
+
+**User Story:** As a user, I want to define the execution sequence of uploaded files via a sortable UI, so that the DAG generator can detect cross-pipeline dependencies and produce a unified execution plan.
+
+#### Acceptance Criteria
+
+1. THE Flask /spark-dag page SHALL provide a sortable file list with up/down arrows (▲/▼) that appears after files are selected
+2. THE file sequence (top to bottom) SHALL be submitted with the form and used by the optimizer for cross-pipeline dependency detection
+3. WHEN a sequence is provided and one pipeline's output feeds another pipeline's input, THE DAG_Generator SHALL reflect the cross-pipeline flow in the generated SparkDAG
+4. IF no sequence is provided, THE DAG_Generator SHALL generate independent SparkDAGs per file without cross-pipeline optimization
+
+### Requirement 12: DAG Mode Selection
+
+**User Story:** As a user, I want to choose whether the DAG is generated from the optimized pipeline, the original pipeline, or both, so that I can compare the execution plans.
+
+#### Acceptance Criteria
+
+1. THE Flask /spark-dag page SHALL provide a mode selector with three options: Optimized (default), Original, and Both
+2. WHEN "Optimized" mode is selected, THE DAG_Generator SHALL produce the SparkDAG from the optimizer output (after all optimization rules are applied)
+3. WHEN "Original" mode is selected, THE DAG_Generator SHALL produce the SparkDAG from the raw parsed PipelineModel (before optimization)
+4. WHEN "Both" mode is selected, THE DAG_Generator SHALL produce two sets of SparkDAGs (original and optimized) with pipeline names prefixed by [ORIGINAL] and [OPTIMIZED] respectively
+5. THE download endpoints SHALL include all generated DAGs regardless of mode selection

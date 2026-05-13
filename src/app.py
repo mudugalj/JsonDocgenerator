@@ -291,69 +291,158 @@ from src.spark_dag_renderer import render_markdown_report
 
 _spark_dag_result: dict = {}
 
+SPARK_DAG_HTML = """
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>Spark DAG</title>
+<style>
+body{font-family:system-ui,sans-serif;max-width:800px;margin:2rem auto;padding:0 1rem;}
+.btn{background:#2563eb;color:white;padding:0.5rem 1.5rem;border:none;border-radius:4px;cursor:pointer;display:inline-block;text-decoration:none;font-size:1rem;}
+.btn:hover{background:#1d4ed8;}
+.upload-form{border:2px dashed #ccc;padding:2rem;border-radius:8px;}
+.success{color:#16a34a;background:#f0fdf4;padding:1rem;border-radius:4px;margin:1rem 0;}
+.error{color:#dc2626;background:#fef2f2;padding:1rem;border-radius:4px;margin:1rem 0;}
+#dag-seq-list{list-style:none;padding:0;margin:0.5rem 0;}
+#dag-seq-list li{background:#f8fafc;border:1px solid #e2e8f0;padding:0.5rem 0.75rem;margin:0.25rem 0;border-radius:4px;cursor:grab;display:flex;align-items:center;gap:0.5rem;}
+#dag-seq-list li:active{cursor:grabbing;background:#e0e7ff;}
+#dag-seq-list li .grip{color:#94a3b8;font-size:1.2rem;}
+#dag-seq-list li .fname{flex:1;font-family:monospace;font-size:0.9rem;}
+#dag-seq-list li .move-btns button{background:#e2e8f0;border:none;padding:0.2rem 0.5rem;border-radius:3px;cursor:pointer;font-size:0.8rem;}
+#dag-seq-list li .move-btns button:hover{background:#cbd5e1;}
+.seq-section{margin-top:1rem;text-align:left;}
+.seq-section h3{margin:0 0 0.5rem 0;font-size:1rem;color:#475569;}
+.mode-select{margin:1rem 0;}
+.mode-select label{margin-right:1.5rem;cursor:pointer;}
+</style></head>
+<body>
+<h1>Spark DAG Generator</h1>
+<p>Upload pipeline JSONs to generate the Spark execution DAG. Set file sequence for cross-pipeline flow.</p>
+
+<form class="upload-form" method="POST" enctype="multipart/form-data" id="dag-form">
+    <p><strong>Upload JSON files:</strong></p>
+    <input type="file" name="files" multiple accept=".json" id="dag-file-input">
+
+    <div class="seq-section" id="dag-seq-section" style="display:none;">
+        <h3>📋 Execution Sequence (reorder for cross-pipeline flow)</h3>
+        <ul id="dag-seq-list"></ul>
+    </div>
+
+    <div class="mode-select">
+        <strong>DAG Mode:</strong><br>
+        <label><input type="radio" name="mode" value="optimized" checked> Optimized (recommended)</label>
+        <label><input type="radio" name="mode" value="original"> Original (before optimization)</label>
+        <label><input type="radio" name="mode" value="both"> Both (side by side)</label>
+    </div>
+
+    <input type="hidden" name="sequence" id="dag-seq-hidden">
+    <br>
+    <button type="submit" class="btn">Generate Spark DAG</button>
+    <a href="/" class="btn" style="margin-left:0.5rem;">← Back</a>
+</form>
+
+{% if errors %}
+<div class="error"><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>
+{% endif %}
+
+{% if success %}
+<div class="success">
+    <strong>DAG generated!</strong> {{ node_count }} nodes, {{ edge_count }} edges across {{ dag_count }} pipeline(s).
+    {% if mode == "both" %}<br>Showing both original and optimized DAGs.{% endif %}
+    <br><br>
+    <a href="/spark-dag/download/json" class="btn">Download JSON</a>
+    <a href="/spark-dag/download/markdown" class="btn">Download Markdown</a>
+</div>
+{% endif %}
+
+<script>
+const dagInput = document.getElementById('dag-file-input');
+const dagSection = document.getElementById('dag-seq-section');
+const dagList = document.getElementById('dag-seq-list');
+const dagHidden = document.getElementById('dag-seq-hidden');
+const dagForm = document.getElementById('dag-form');
+
+dagInput.addEventListener('change', function() {
+    const files = Array.from(this.files);
+    dagList.innerHTML = '';
+    if (files.length === 0) { dagSection.style.display = 'none'; return; }
+    dagSection.style.display = 'block';
+    files.forEach(f => {
+        const li = document.createElement('li');
+        li.dataset.filename = f.name;
+        li.innerHTML = '<span class="grip">⠿</span><span class="fname">' + f.name + '</span><span class="move-btns"><button type="button" onclick="dagMoveUp(this)">▲</button><button type="button" onclick="dagMoveDown(this)">▼</button></span>';
+        dagList.appendChild(li);
+    });
+    dagUpdateHidden();
+});
+function dagMoveUp(btn) { const li=btn.closest('li'); const prev=li.previousElementSibling; if(prev){dagList.insertBefore(li,prev);dagUpdateHidden();} }
+function dagMoveDown(btn) { const li=btn.closest('li'); const next=li.nextElementSibling; if(next){dagList.insertBefore(next,li);dagUpdateHidden();} }
+function dagUpdateHidden() { dagHidden.value = Array.from(dagList.querySelectorAll('li')).map(li=>li.dataset.filename).join('\\n'); }
+dagForm.addEventListener('submit', function() { dagUpdateHidden(); });
+</script>
+</body></html>
+"""
+
 
 @app.route("/spark-dag", methods=["GET", "POST"])
 def spark_dag_endpoint():
     if request.method == "GET":
-        return render_template_string("""
-        <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Spark DAG</title>
-        <style>body{font-family:system-ui,sans-serif;max-width:800px;margin:2rem auto;padding:0 1rem;}
-        .btn{background:#2563eb;color:white;padding:0.5rem 1.5rem;border:none;border-radius:4px;cursor:pointer;display:inline-block;text-decoration:none;}
-        .upload-form{border:2px dashed #ccc;padding:2rem;border-radius:8px;}
-        .success{color:#16a34a;background:#f0fdf4;padding:1rem;border-radius:4px;margin:1rem 0;}</style></head>
-        <body><h1>Spark DAG Generator</h1>
-        <p>Upload optimized pipeline JSONs to generate the Spark execution DAG.</p>
-        <form class="upload-form" method="POST" enctype="multipart/form-data">
-        <input type="file" name="files" multiple accept=".json"><br><br>
-        <button type="submit" class="btn">Generate Spark DAG</button></form>
-        {% if success %}<div class="success"><strong>DAG generated!</strong> {{ node_count }} nodes, {{ edge_count }} edges.
-        <br><br><a href="/spark-dag/download/json" class="btn">Download JSON</a>
-        <a href="/spark-dag/download/markdown" class="btn">Download Markdown</a></div>{% endif %}
-        </body></html>
-        """, success=False, node_count=0, edge_count=0)
+        return render_template_string(SPARK_DAG_HTML, success=False, errors=None, node_count=0, edge_count=0, dag_count=0, mode="optimized")
 
     files = request.files.getlist("files")
+    sequence_text = request.form.get("sequence", "").strip()
+    mode = request.form.get("mode", "optimized")
+    sequence = [line.strip() for line in sequence_text.split("\n") if line.strip()] if sequence_text else None
+
     if not files or all(f.filename == "" for f in files):
-        return "No files provided", 400
+        return render_template_string(SPARK_DAG_HTML, success=False, errors=["No files provided."], node_count=0, edge_count=0, dag_count=0, mode=mode), 400
 
     parsed_models = []
+    errors_list = []
     for file in files:
         filename = file.filename or ""
         if not validate_extension(filename):
+            errors_list.append(f"[{filename}] Invalid extension")
             continue
         try:
             data = json.loads(file.read().decode("utf-8"))
-        except Exception:
+        except Exception as e:
+            errors_list.append(f"[{filename}] Invalid JSON: {e}")
             continue
         schema_errors = validate_schema(data, filename)
         if schema_errors:
+            errors_list.extend(schema_errors)
             continue
         domain = _extract_domain(filename)
         model = parse_pipeline(data, filename=filename, domain=domain)
         parsed_models.append(model)
 
     if not parsed_models:
-        return "No valid files", 400
+        return render_template_string(SPARK_DAG_HTML, success=False, errors=errors_list or ["No valid files."], node_count=0, edge_count=0, dag_count=0, mode=mode), 400
 
-    # Optimize then generate DAG
-    opt_result = optimize(parsed_models)
-    dags = [generate_spark_dag(m) for m in opt_result.optimized_models]
+    # Optimize with sequence for cross-pipeline support
+    opt_result = optimize(parsed_models, sequence=sequence)
+
+    # Generate DAGs based on mode
+    dags = []
+    if mode in ("optimized", "both"):
+        dags.extend([generate_spark_dag(m) for m in opt_result.optimized_models])
+    if mode in ("original", "both"):
+        original_dags = [generate_spark_dag(m) for m in parsed_models]
+        # Prefix names to distinguish
+        if mode == "both":
+            for d in original_dags:
+                d.pipeline_name = f"[ORIGINAL] {d.pipeline_name}"
+            for d in dags:
+                d.pipeline_name = f"[OPTIMIZED] {d.pipeline_name}"
+        dags.extend(original_dags)
+
     _spark_dag_result["dags"] = dags
 
     total_nodes = sum(len(d.nodes) for d in dags)
     total_edges = sum(len(d.edges) for d in dags)
 
-    return render_template_string("""
-    <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Spark DAG</title>
-    <style>body{font-family:system-ui,sans-serif;max-width:800px;margin:2rem auto;padding:0 1rem;}
-    .btn{background:#2563eb;color:white;padding:0.5rem 1.5rem;border:none;border-radius:4px;cursor:pointer;display:inline-block;text-decoration:none;}
-    .success{color:#16a34a;background:#f0fdf4;padding:1rem;border-radius:4px;margin:1rem 0;}</style></head>
-    <body><h1>Spark DAG Generator</h1>
-    {% if success %}<div class="success"><strong>DAG generated!</strong> {{ node_count }} nodes, {{ edge_count }} edges across {{ dag_count }} pipeline(s).
-    <br><br><a href="/spark-dag/download/json" class="btn">Download JSON</a>
-    <a href="/spark-dag/download/markdown" class="btn">Download Markdown</a></div>{% endif %}
-    </body></html>
-    """, success=True, node_count=total_nodes, edge_count=total_edges, dag_count=len(dags))
+    return render_template_string(
+        SPARK_DAG_HTML, success=True, errors=errors_list if errors_list else None,
+        node_count=total_nodes, edge_count=total_edges, dag_count=len(dags), mode=mode
+    )
 
 
 @app.route("/spark-dag/download/json", methods=["GET"])
